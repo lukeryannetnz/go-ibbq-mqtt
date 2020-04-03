@@ -134,7 +134,7 @@ func run(config *Configuration) error {
 				}
 				temps = t
 				go updateWebsockets(status, batteryLevel, temps)
-				go updateMqtt(&mqttClient, status, batteryLevel, temps)
+				go updateMqtt(mqttClient, status, batteryLevel, temps)
 			case bl := <-batteryLevelChannel:
 				if bl == nil {
 					logger.Info("battery level channel closed")
@@ -142,7 +142,7 @@ func run(config *Configuration) error {
 				}
 				batteryLevel = bl[0]
 				go updateWebsockets(status, batteryLevel, temps)
-				go updateMqtt(&mqttClient, status, batteryLevel, temps)
+				go updateMqtt(mqttClient, status, batteryLevel, temps)
 			case s := <-statusChannel:
 				if s == nil {
 					logger.Info("status channel closed")
@@ -153,7 +153,7 @@ func run(config *Configuration) error {
 				}
 				status = *s
 				go updateWebsockets(status, batteryLevel, temps)
-				go updateMqtt(&mqttClient, status, batteryLevel, temps)
+				go updateMqtt(mqttClient, status, batteryLevel, temps)
 			case <-done:
 				logger.Info("shutdown detected")
 				close(tempsChannel)
@@ -291,7 +291,7 @@ func connectionClosed(conn *websocket.Conn) {
 	connectionsMutex.Unlock()
 }
 
-func updateMqtt(c *mqtt.Client, status ibbq.Status, batteryLevel int, temps []float64) {
+func updateMqtt(c mqtt.Client, status ibbq.Status, batteryLevel int, temps []float64) {
 
 	if token := c.Subscribe("go-mqtt/sample", 0, nil); token.Wait() && token.Error() != nil {
 		fmt.Println(token.Error())
