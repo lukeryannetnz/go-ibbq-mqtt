@@ -183,7 +183,6 @@ func run(config *Configuration) error {
 		logger.Info("Connecting to mqtt broker", "broker", config.MqttBroker)
 
 		if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
-			panic(token.Error())
 			return token.Error()
 		}
 
