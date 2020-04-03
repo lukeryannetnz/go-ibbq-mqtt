@@ -292,17 +292,14 @@ func connectionClosed(conn *websocket.Conn) {
 }
 
 func updateMqtt(c mqtt.Client, status ibbq.Status, batteryLevel int, temps []float64) {
-
-	for i := 0; i < 5; i++ {
-		text := gin.H{
-			"status":       status,
-			"batteryLevel": batteryLevel,
-			"temps":        temps,
-		}
-
-		token := c.Publish("ibbq/data", 0, false, text)
-		token.Wait()
+	text := gin.H{
+		"status":       status,
+		"batteryLevel": batteryLevel,
+		"temps":        temps,
 	}
+
+	token := c.Publish("ibbq/data", 0, false, text)
+	token.Wait()
 }
 
 func updateWebsockets(status ibbq.Status, batteryLevel int, temps []float64) {
