@@ -30,10 +30,11 @@ import (
 
 	"github.com/containous/flaeg"
 	"github.com/containous/staert"
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gin-gonic/gin"
 	"github.com/go-ble/ble"
 	"github.com/gorilla/websocket"
-	"github.com/mgutz/logxi/v1"
+	log "github.com/mgutz/logxi/v1"
 	"github.com/sworisbreathing/go-ibbq/v2"
 	"golang.org/x/sync/errgroup"
 )
@@ -113,6 +114,16 @@ func run(config *Configuration) error {
 		Addr:    fmt.Sprintf(":%d", config.Port),
 		Handler: router,
 	}
+
+	//mqtt.DEBUG = log.New(os.Stdout, "", 0)
+	//mqtt.ERROR = log.New(os.Stdout, "", 0)
+	opts := mqtt.NewClientOptions().AddBroker(config.MqttBroker).SetClientID("gotrivial")
+	opts.SetKeepAlive(2 * time.Second)
+	//opts.SetDefaultPublishHandler(f)
+	opts.SetPingTimeout(1 * time.Second)
+
+	mqttClient := mqtt.NewClient(opts)
+
 	g.Go(func() error {
 		for {
 			select {
@@ -123,6 +134,7 @@ func run(config *Configuration) error {
 				}
 				temps = t
 				go updateWebsockets(status, batteryLevel, temps)
+				go updateMqtt(mqttClient, status, batteryLevel, temps)
 			case bl := <-batteryLevelChannel:
 				if bl == nil {
 					logger.Info("battery level channel closed")
@@ -130,6 +142,7 @@ func run(config *Configuration) error {
 				}
 				batteryLevel = bl[0]
 				go updateWebsockets(status, batteryLevel, temps)
+				go updateMqtt(mqttClient, status, batteryLevel, temps)
 			case s := <-statusChannel:
 				if s == nil {
 					logger.Info("status channel closed")
@@ -140,6 +153,7 @@ func run(config *Configuration) error {
 				}
 				status = *s
 				go updateWebsockets(status, batteryLevel, temps)
+				go updateMqtt(mqttClient, status, batteryLevel, temps)
 			case <-done:
 				logger.Info("shutdown detected")
 				close(tempsChannel)
@@ -164,6 +178,16 @@ func run(config *Configuration) error {
 				time.Sleep(30 * time.Second)
 			}
 		}
+	})
+	g.Go(func() error {
+		logger.Info("Connecting to mqtt broker", "broker", config.MqttBroker)
+
+		if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
+			panic(token.Error())
+			return token.Error()
+		}
+
+		return nil
 	})
 	g.Go(func() error {
 		logger.Info("Starting websocket server", "port", config.Port)
@@ -266,6 +290,31 @@ func connectionClosed(conn *websocket.Conn) {
 	}
 	logger.Debug("Connection removed", "connections", connections)
 	connectionsMutex.Unlock()
+}
+
+func updateMqtt(c *mqtt.Client, status ibbq.Status, batteryLevel int, temps []float64) {
+
+	if token := c.Subscribe("go-mqtt/sample", 0, nil); token.Wait() && token.Error() != nil {
+		fmt.Println(token.Error())
+		os.Exit(1)
+	}
+
+	for i := 0; i < 5; i++ {
+		text := fmt.Sprintf("this is msg #%d!", i)
+		token := c.Publish("go-mqtt/sample", 0, false, text)
+		token.Wait()
+	}
+
+	time.Sleep(6 * time.Second)
+
+	if token := c.Unsubscribe("go-mqtt/sample"); token.Wait() && token.Error() != nil {
+		fmt.Println(token.Error())
+		os.Exit(1)
+	}
+
+	c.Disconnect(250)
+
+	time.Sleep(1 * time.Second)
 }
 
 func updateWebsockets(status ibbq.Status, batteryLevel int, temps []float64) {

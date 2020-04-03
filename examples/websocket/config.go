@@ -24,7 +24,8 @@ import (
 // Configuration is our app configuration
 type Configuration struct {
 	IbbqConfiguration
-	Port int `short:"p" description:"Web server port number"`
+	Port       int    `short:"p" description:"Web server port number"`
+	MqttBroker string `short:"m" description:"e.g. tcp://iot.eclipse.org:1883"`
 }
 
 // DefaultConfiguration is a somewhat sane set of default values.
@@ -34,7 +35,8 @@ var DefaultConfiguration = &Configuration{
 		BatteryPollingInterval: int(ibbq.DefaultConfiguration.BatteryPollingInterval / time.Second),
 		TemperatureUnits:       "f",
 	},
-	Port: 8080,
+	Port:       8080,
+	MqttBroker: "tcp://iot.eclipse.org:1883",
 }
 
 // IbbqConfiguration is our ibbq configuration
