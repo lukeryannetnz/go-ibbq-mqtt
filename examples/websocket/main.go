@@ -300,7 +300,7 @@ func updateMqtt(c mqtt.Client, status ibbq.Status, batteryLevel int, temps []flo
 			"temps":        temps,
 		}
 
-		token := c.Publish("go-mqtt/sample", 0, false, text)
+		token := c.Publish("ibbq/data", 0, false, text)
 		token.Wait()
 	}
 }
