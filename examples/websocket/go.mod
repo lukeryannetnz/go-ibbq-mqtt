@@ -1,4 +1,4 @@
-module github.com/sworisbreathing/go-ibbq/v2/examples/websocket
+module github.com/lukeryannetnz/go-ibbq/v2/examples/websocket
 
 go 1.12
 
