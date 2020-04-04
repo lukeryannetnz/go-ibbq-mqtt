@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -25,7 +26,7 @@ func NewMqttClient() MqttClient {
 }
 
 func (m *mqttClient) Init() {
-	opts := mqtt.NewClientOptions().AddBroker("tcp://iot.eclipse.org:1883").SetClientID("go-ibbq-mqtt")
+	opts := mqtt.NewClientOptions().AddBroker(os.Getenv("MQTT_SERVER")).SetClientID("go-ibbq-mqtt")
 	opts.SetKeepAlive(2 * time.Second)
 	opts.SetPingTimeout(1 * time.Second)
 
@@ -35,7 +36,7 @@ func (m *mqttClient) Init() {
 		logger.Fatal("Error connecting to mqtt", "err", token.Error())
 	}
 
-	logger.Info("Connecting to mqtt broker", "broker", "tcp://iot.eclipse.org:1883")
+	logger.Info("Connecting to mqtt broker", "broker", os.Getenv("MQTT_SERVER"))
 }
 
 func (m *mqttClient) Pub(topic string, payload interface{}) {

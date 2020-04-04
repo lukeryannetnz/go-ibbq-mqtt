@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/go-ble/ble"
+	"github.com/joho/godotenv"
 	log "github.com/mgutz/logxi/v1"
 	"github.com/sworisbreathing/go-ibbq/v2"
 )
@@ -49,8 +50,16 @@ func disconnectedHandler(cancel func(), done chan struct{}) func() {
 	}
 }
 
+func configureenv() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+}
+
 func main() {
 	var err error
+	configureenv()
 	logger.Debug("initializing context")
 	ctx1, cancel := context.WithCancel(context.Background())
 	defer cancel()
