@@ -40,8 +40,15 @@ func (m *mqttClient) Init() {
 }
 
 func (m *mqttClient) Pub(topic string, payload interface{}) {
-	statustoken := m.client.Publish(getTopic(topic), 0, false, payload)
+	t := getTopic(topic)
+
+	logger.Info("Publishing to mqtt", "topic", t)
+	statustoken := m.client.Publish(t, 0, false, payload)
+
 	statustoken.Wait()
+	if statustoken.Error() != nil {
+		logger.Fatal("Error publishing to mqtt", "err", statustoken.Error())
+	}
 }
 
 func getTopic(topic string) string {
