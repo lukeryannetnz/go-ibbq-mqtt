@@ -12,7 +12,7 @@ func TestMain(m *testing.M) {
 }
 
 func setup() {
-	os.Setenv("MQTT_TOPIC", "ibbq")
+	configureenv()
 }
 
 func TestGetTopic(t *testing.T) {
