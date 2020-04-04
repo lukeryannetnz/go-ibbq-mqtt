@@ -1,4 +1,4 @@
-# Inkbird wireless thermometer MQTT Publisher 
+# Inkbird wireless thermometer MQTT publisher 
 Inspired by the example apps in sworisbreathing/go-ibbq, this is a simple app that connects to a Inkbird wireless thermometer over Bluetooth using sworisbreathing/go-ibbq. It publishes the data it receives to an MQTT topic using github.com/eclipse/paho.mqtt.golang 
 
 ## Building
