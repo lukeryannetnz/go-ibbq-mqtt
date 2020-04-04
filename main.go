@@ -53,7 +53,7 @@ func disconnectedHandler(cancel func(), done chan struct{}) func() {
 func configureenv() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Fatal("Error loading .env file", "err", err)
 	}
 }
 
