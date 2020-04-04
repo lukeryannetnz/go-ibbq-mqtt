@@ -1,4 +1,5 @@
-# go-iBBQ Data Logger Example
+# go-iBBQ MQTT Publisher Example
+Inspired by sworisbreathing/go-ibbq, this is a simple app that connects to an iBBQ over BLE using sworisbreathing/go-ibbq. It publishes the data it receives to an MQTT channel using github.com/eclipse/paho.mqtt.golang 
 
 ## Building
 
@@ -17,7 +18,7 @@ $ GOOS=darwin go build
 ## Usage
 
 ```bash
-$ LOGXI=main=INF ./datalogger
+$ LOGXI=* ./go-ibbq-mqtt
 12:56:06.920508 INF main Connecting to device
 12:56:13.419140 INF main Connected to device
 12:56:13.433666 INF main Received battery data batteryPct: 96
