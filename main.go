@@ -36,7 +36,7 @@ func f64tostring(input []float64) string {
 
 func temperatureReceived(temperatures []float64) {
 	logger.Info("Received temperature data", "temperatures", temperatures)
-	mc.Pub("temperatures", temperatures)
+	mc.Pub("temperatures", f64tostring(temperatures))
 }
 func batteryLevelReceived(batteryLevel int) {
 	logger.Info("Received battery data", "batteryPct", strconv.Itoa(batteryLevel))
