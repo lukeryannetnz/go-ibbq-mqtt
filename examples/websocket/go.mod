@@ -18,5 +18,3 @@ require (
 	gopkg.in/go-playground/assert.v1 v1.2.1 // indirect
 	gopkg.in/go-playground/validator.v8 v8.18.2 // indirect
 )
-
-replace github.com/sworisbreathing/go-ibbq/v2 v2.0.0 => ../../

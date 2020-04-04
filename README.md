@@ -1,55 +1,32 @@
-# Go-BLE library for iBBQ Devices
+# go-iBBQ Data Logger Example
 
-This library builds on top of [go-ble](https://github.com/go-ble/ble) to read temperatures and battery level from
-bluetooth thermometers such as the [Inkbird IBT-2X](http://www.ink-bird.com/products-bluetooth-thermometer-ibt2x.html).
+## Building
 
-# Usage
+### Linux
 
-The below sections are taken from the [datalogger](./examples/datalogger) example app
-
-## Configuration
-
-```go
-connectTimeout := 60*time.Second
-batteryPollingInterval := 5*time.Minute
-config, err := ibbq.NewConfiguration(connectTimeout, batteryPollingInterval)
+```bash
+$ GOOS=linux go build
 ```
 
-## Notification Handlers / Callbacks
+### OS X
 
-Data received from the device is sent asynchronously to registered callback functions.
-There is also a callback fired when the device disconnects.
-
-```go
-logger := log.New("main")
-
-temperatureReceived := func(temperatures []float64) {
-	logger.Info("Received temperature data", "temperatures", temperatures)
-}
-batteryLevelReceived := func (batteryLevel int) {
-	logger.Info("Received battery data", "batteryPct", strconv.Itoa(batteryLevel))
-}
-
-disconnectedHandler := func(cancel func(), done chan struct{}) func() {
-	return func() {
-		logger.Info("Disconnected")
-		cancel()
-		close(done)
-	}
-}
+```bash
+$ GOOS=darwin go build
 ```
 
-## Instantiating and Connecting
+## Usage
 
-```go
-ctx1, cancel := context.WithCancel(context.Background())
-defer cancel()
-
-ctx := ble.WithSigHandler(ctx1, cancel)
-
-if bbq, err := ibbq.NewIbbq(ctx, config, disconnectedHandler(cancel, done), temperatureReceived, batteryLevelReceived); err != nil {
-    return err
-}
-
-err = bbq.Connect()
+```bash
+$ LOGXI=main=INF ./datalogger
+12:56:06.920508 INF main Connecting to device
+12:56:13.419140 INF main Connected to device
+12:56:13.433666 INF main Received battery data batteryPct: 96
+12:56:14.123995 INF main Received temperature data temperatures: [19 18]
+12:56:16.164030 INF main Received temperature data temperatures: [19 18]
+12:56:18.503975 INF main Received temperature data temperatures: [19 18]
+12:56:20.453983 INF main Received temperature data temperatures: [19 18]
+12:56:22.404003 INF main Received temperature data temperatures: [19 18]
+^C12:56:24.377496 INF main Disconnected # <- ctrl-C was pressed (SIGINT)
+12:56:24.467517 INF main Exiting
+$
 ```
