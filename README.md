@@ -1,5 +1,5 @@
 # go-iBBQ MQTT Publisher Example
-Inspired by sworisbreathing/go-ibbq, this is a simple app that connects to an iBBQ over BLE using sworisbreathing/go-ibbq. It publishes the data it receives to an MQTT channel using github.com/eclipse/paho.mqtt.golang 
+Inspired by sworisbreathing/go-ibbq, this is a simple app that connects to an iBBQ over BLE using sworisbreathing/go-ibbq. It publishes the data it receives to an MQTT topic using github.com/eclipse/paho.mqtt.golang 
 
 ## Building
 
