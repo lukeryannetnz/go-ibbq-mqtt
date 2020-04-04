@@ -34,13 +34,17 @@ func f64tostring(input []float64) string {
 	return fmt.Sprintf("%f", input)
 }
 
+func inttostring(input int) string {
+	return fmt.Sprintf("%d", input)
+}
+
 func temperatureReceived(temperatures []float64) {
 	logger.Info("Received temperature data", "temperatures", temperatures)
 	mc.Pub("temperatures", f64tostring(temperatures))
 }
 func batteryLevelReceived(batteryLevel int) {
 	logger.Info("Received battery data", "batteryPct", strconv.Itoa(batteryLevel))
-	mc.Pub("batterylevel", string(batteryLevel))
+	mc.Pub("batterylevel", inttostring(batteryLevel))
 }
 func statusUpdated(status ibbq.Status) {
 	logger.Info("Status updated", "status", status)

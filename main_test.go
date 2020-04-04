@@ -10,7 +10,7 @@ func TestFloatToStringSingle(t *testing.T) {
 	var got = f64tostring(data)
 
 	if got != expected {
-		t.Errorf("getTopic('hello') = %s; want %s", got, expected)
+		t.Errorf("got %s; want %s", got, expected)
 	}
 }
 
@@ -20,6 +20,16 @@ func TestFloatToString(t *testing.T) {
 	var got = f64tostring(data)
 
 	if got != expected {
-		t.Errorf("getTopic('hello') = %s; want %s", got, expected)
+		t.Errorf("got %s; want %s", got, expected)
+	}
+}
+
+func TestIntToString(t *testing.T) {
+	data := 69
+	expected := "69"
+	var got = inttostring(data)
+
+	if got != expected {
+		t.Errorf("got %s; want %s", got, expected)
 	}
 }
