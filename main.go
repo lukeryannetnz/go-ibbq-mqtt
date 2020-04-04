@@ -39,7 +39,7 @@ func batteryLevelReceived(batteryLevel int) {
 }
 func statusUpdated(status ibbq.Status) {
 	logger.Info("Status updated", "status", status)
-	mc.Pub("status", status)
+	mc.Pub("status", string(status))
 }
 
 func disconnectedHandler(cancel func(), done chan struct{}) func() {

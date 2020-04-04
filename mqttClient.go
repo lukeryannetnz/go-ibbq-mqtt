@@ -47,7 +47,7 @@ func (m *mqttClient) Pub(topic string, payload interface{}) {
 
 	statustoken.Wait()
 	if statustoken.Error() != nil {
-		logger.Fatal("Error publishing to mqtt", "err", statustoken.Error())
+		logger.Error("Error publishing to mqtt", "err", statustoken.Error())
 	}
 }
 
