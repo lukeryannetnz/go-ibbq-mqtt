@@ -1,32 +1,32 @@
 package main
 
-import(
+import (
+	"fmt"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
 // MqttClient is the public interface
-type MqttClient interface{
+type MqttClient interface {
 	Init()
-	Pub(payload interface{})
+	Pub(topic string, payload interface{})
 }
 
 // mqttClient implements the MqttClient interface, encapsulating the paho.mqtt.golang module.
-type mqttClient struct{
+type mqttClient struct {
 	client mqtt.Client
 }
 
 func NewMqttClient() MqttClient {
 	c := &mqttClient{}
 
-	return c;
+	return c
 }
 
-func (m *mqttClient) Init(){
+func (m *mqttClient) Init() {
 	opts := mqtt.NewClientOptions().AddBroker("tcp://iot.eclipse.org:1883").SetClientID("go-ibbq-mqtt")
 	opts.SetKeepAlive(2 * time.Second)
-	//opts.SetDefaultPublishHandler(f)
 	opts.SetPingTimeout(1 * time.Second)
 
 	m.client = mqtt.NewClient(opts)
@@ -38,7 +38,11 @@ func (m *mqttClient) Init(){
 	logger.Info("Connecting to mqtt broker", "broker", "tcp://iot.eclipse.org:1883")
 }
 
-func (m *mqttClient) Pub(payload interface{}){
-	statustoken := m.client.Publish("ibbq/data", 0, false, payload)
+func (m *mqttClient) Pub(topic string, payload interface{}) {
+	statustoken := m.client.Publish(getTopic(topic), 0, false, payload)
 	statustoken.Wait()
+}
+
+func getTopic(topic string) string {
+	return fmt.Sprint("ibbq/", topic)
 }

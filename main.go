@@ -17,7 +17,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"time"
 
@@ -31,15 +30,15 @@ var mc = NewMqttClient()
 
 func temperatureReceived(temperatures []float64) {
 	logger.Info("Received temperature data", "temperatures", temperatures)
-	mc.Pub(fmt.Sprintln("temps : {0}", temperatures))
+	mc.Pub("temperatures", temperatures)
 }
 func batteryLevelReceived(batteryLevel int) {
 	logger.Info("Received battery data", "batteryPct", strconv.Itoa(batteryLevel))
-	mc.Pub(fmt.Sprintln("batteryLevel : {0}", batteryLevel))
+	mc.Pub("batterylevel", batteryLevel)
 }
 func statusUpdated(status ibbq.Status) {
 	logger.Info("Status updated", "status", status)
-	mc.Pub(fmt.Sprintln("status : {0}", status))
+	mc.Pub("status", status)
 }
 
 func disconnectedHandler(cancel func(), done chan struct{}) func() {
