@@ -45,5 +45,5 @@ func (m *mqttClient) Pub(topic string, payload interface{}) {
 }
 
 func getTopic(topic string) string {
-	return fmt.Sprint("ibbq/", topic)
+	return fmt.Sprintf("%s/%s", os.Getenv("MQTT_TOPIC"), topic)
 }
