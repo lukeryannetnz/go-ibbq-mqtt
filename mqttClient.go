@@ -26,6 +26,8 @@ func NewMqttClient() MqttClient {
 }
 
 func (m *mqttClient) Init() {
+	logger.Info("Connecting to mqtt broker", "broker", os.Getenv("MQTT_SERVER"))
+
 	opts := mqtt.NewClientOptions().AddBroker(os.Getenv("MQTT_SERVER")).SetClientID("go-ibbq-mqtt")
 	opts.SetKeepAlive(2 * time.Second)
 	opts.SetPingTimeout(1 * time.Second)
@@ -36,7 +38,7 @@ func (m *mqttClient) Init() {
 		logger.Fatal("Error connecting to mqtt", "err", token.Error())
 	}
 
-	logger.Info("Connecting to mqtt broker", "broker", os.Getenv("MQTT_SERVER"))
+	logger.Info("Connected to mqtt broker", "broker", os.Getenv("MQTT_SERVER"))
 }
 
 func (m *mqttClient) Pub(topic string, payload interface{}) {

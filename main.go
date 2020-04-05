@@ -68,35 +68,50 @@ func configureenv() {
 	}
 }
 
-func main() {
+func initializeibbq(ctx context.Context, cancel context.CancelFunc, done chan struct{}) {
+	logger.Debug("instantiating ibbq structs")
 	var err error
-	configureenv()
-	logger.Debug("initializing context")
-	ctx1, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	registerInterruptHandler(cancel)
-	ctx := ble.WithSigHandler(ctx1, cancel)
-	logger.Debug("context initialized")
 	var bbq ibbq.Ibbq
-	logger.Debug("instantiating ibbq struct")
-	done := make(chan struct{})
 	var config ibbq.Configuration
+	logger.Debug("instantiated ibbq structs")
+
 	if config, err = ibbq.NewConfiguration(60*time.Second, 5*time.Minute); err != nil {
 		logger.Fatal("Error creating configuration", "err", err)
 	}
+
+	logger.Info("Connecting to device")
 	if bbq, err = ibbq.NewIbbq(ctx, config, disconnectedHandler(cancel, done), temperatureReceived, batteryLevelReceived, statusUpdated); err != nil {
 		logger.Fatal("Error creating iBBQ", "err", err)
 	}
-	logger.Debug("instantiated ibbq struct")
 
-	mc.Init()
-	logger.Info("Connected to mqtt")
-
-	logger.Info("Connecting to device")
 	if err = bbq.Connect(); err != nil {
 		logger.Fatal("Error connecting to device", "err", err)
 	}
 	logger.Info("Connected to device")
+}
+
+func main() {
+	logger.Debug(`
+	_____ ____        _  ____  ____  ____        _      ____  _____  _____ 
+	/  __//  _ \      / \/  _ \/  _ \/  _ \      / \__/|/  _ \/__ __\/__ __\
+	| |  _| / \|_____ | || | //| | //| / \|_____ | |\/||| / \|  / \    / \  
+	| |_//| \_/|\____\| || |_\\| |_\\| \_\|\____\| |  ||| \_\|  | |    | |  
+	\____\\____/      \_/\____/\____/\____\      \_/  \|\____\  \_/    \_/  
+																	
+`)
+	configureenv()
+
+	logger.Debug("initializing context")
+	ctx1, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	registerInterruptHandler(cancel, ctx1)
+	ctx := ble.WithSigHandler(ctx1, cancel)
+	logger.Debug("context initialized")
+
+	mc.Init()
+
+	done := make(chan struct{})
+	initializeibbq(ctx, cancel, done)
 
 	<-ctx.Done()
 	<-done

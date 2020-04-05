@@ -21,11 +21,13 @@ import (
 	"os/signal"
 )
 
-func registerInterruptHandler(cancel context.CancelFunc) {
+func registerInterruptHandler(cancel context.CancelFunc, ctx1 context.Context) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	go func() {
 		<-c
 		cancel()
+		<-ctx1.Done()
+		os.Exit(1)
 	}()
 }
