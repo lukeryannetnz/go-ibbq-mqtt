@@ -12,7 +12,7 @@ func TestMain(m *testing.M) {
 }
 
 func setup() {
-	configureenv()
+	configureEnv()
 }
 
 func TestGetTopic(t *testing.T) {
