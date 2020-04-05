@@ -30,22 +30,22 @@ import (
 var logger = log.New("main")
 var mc = NewMqttClient()
 
-func f64tostring(input []float64) string {
+func f64ToString(input []float64) string {
 	return fmt.Sprintf("%f", input)
 }
 
-func inttostring(input int) string {
+func intToString(input int) string {
 	return fmt.Sprintf("%d", input)
 }
 
 func temperatureReceived(temperatures []float64) {
 	logger.Info("Received temperature data", "temperatures", temperatures)
-	mc.Pub("temperatures", f64tostring(temperatures))
+	mc.Pub("temperatures", f64ToString(temperatures))
 }
 
 func batteryLevelReceived(batteryLevel int) {
 	logger.Info("Received battery data", "batteryPct", strconv.Itoa(batteryLevel))
-	mc.Pub("batterylevel", inttostring(batteryLevel))
+	mc.Pub("batterylevel", intToString(batteryLevel))
 }
 
 func statusUpdated(status ibbq.Status) {
@@ -61,14 +61,14 @@ func disconnectedHandler(cancel func(), done chan struct{}) func() {
 	}
 }
 
-func configureenv() {
+func configureEnv() {
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file", "err", err)
 	}
 }
 
-func initializeibbq(ctx context.Context, cancel context.CancelFunc, done chan struct{}) {
+func initializeiBbq(ctx context.Context, cancel context.CancelFunc, done chan struct{}) {
 	logger.Debug("instantiating ibbq structs")
 	var err error
 	var bbq ibbq.Ibbq
@@ -99,7 +99,7 @@ func main() {
 	\____\\____/      \_/\____/\____/\____\      \_/  \|\____\  \_/    \_/  
 																	
 `)
-	configureenv()
+	configureEnv()
 
 	logger.Debug("initializing context")
 	ctx1, cancel := context.WithCancel(context.Background())
@@ -111,7 +111,7 @@ func main() {
 	mc.Init()
 
 	done := make(chan struct{})
-	initializeibbq(ctx, cancel, done)
+	initializeiBbq(ctx, cancel, done)
 
 	<-ctx.Done()
 	<-done
