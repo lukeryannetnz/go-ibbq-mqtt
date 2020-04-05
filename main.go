@@ -91,7 +91,7 @@ func initializeibbq(ctx context.Context, cancel context.CancelFunc, done chan st
 }
 
 func main() {
-	logger.Debug(`
+	logger.Info(`
 	_____ ____        _  ____  ____  ____        _      ____  _____  _____ 
 	/  __//  _ \      / \/  _ \/  _ \/  _ \      / \__/|/  _ \/__ __\/__ __\
 	| |  _| / \|_____ | || | //| | //| / \|_____ | |\/||| / \|  / \    / \  

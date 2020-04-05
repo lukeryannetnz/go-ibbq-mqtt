@@ -25,6 +25,13 @@ See .env for the configuration values you can set via the environment. The defau
 ### example terminal output
 ```bash
 $ LOGXI=*=INF ./go-ibbq-mqtt
+19:35:28.768185 INF main
+   	_____ ____        _  ____  ____  ____        _      ____  _____  _____
+	/  __//  _ \      / \/  _ \/  _ \/  _ \      / \__/|/  _ \/__ __\/__ __\
+	| |  _| / \|_____ | || | //| | //| / \|_____ | |\/||| / \|  / \    / \
+	| |_//| \_/|\____\| || |_\\| |_\\| \_\|\____\| |  ||| \_\|  | |    | |
+	\____\\____/      \_/\____/\____/\____\      \_/  \|\____\  \_/    \_/
+
 19:35:28.768196 INF main Connecting to mqtt broker broker: tcp://mqtt.local:1883
 19:35:28.768491 INF main Connected to mqtt
 19:35:28.768657 INF main Connecting to device
