@@ -17,7 +17,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"time"
 
@@ -30,27 +29,25 @@ import (
 var logger = log.New("main")
 var mc = NewMqttClient()
 
-func f64ToString(input []float64) string {
-	return fmt.Sprintf("%f", input)
-}
-
-func intToString(input int) string {
-	return fmt.Sprintf("%d", input)
-}
-
 func temperatureReceived(temperatures []float64) {
 	logger.Info("Received temperature data", "temperatures", temperatures)
-	mc.Pub("temperatures", f64ToString(temperatures))
+
+	t := &temperature{temperatures}
+	mc.Pub("temperatures", t.toJson())
 }
 
-func batteryLevelReceived(batteryLevel int) {
-	logger.Info("Received battery data", "batteryPct", strconv.Itoa(batteryLevel))
-	mc.Pub("batterylevel", intToString(batteryLevel))
+func batteryLevelReceived(level int) {
+	logger.Info("Received battery data", "batteryPct", strconv.Itoa(level))
+
+	b := &batteryLevel{level}
+	mc.Pub("batterylevel", b.toJson())
 }
 
-func statusUpdated(status ibbq.Status) {
-	logger.Info("Status updated", "status", status)
-	mc.Pub("status", string(status))
+func statusUpdated(ibbqStatus ibbq.Status) {
+	logger.Info("Status updated", "status", ibbqStatus)
+
+	s := &status{string(ibbqStatus)}
+	mc.Pub("status", s.toJson())
 }
 
 func disconnectedHandler(cancel func(), done chan struct{}) func() {
