@@ -291,31 +291,71 @@ var indexHTML = `<!DOCTYPE html>
       return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
     }
 
+    function collectDeviceDrafts() {
+      const drafts = {};
+      document.querySelectorAll('#deviceRows input[data-mac][data-role]').forEach(input => {
+        const mac = input.dataset.mac;
+        if (!drafts[mac]) drafts[mac] = {};
+        drafts[mac][input.dataset.role] = input.value;
+      });
+      return drafts;
+    }
+
+    function getActiveInputState() {
+      const active = document.activeElement;
+      if (!active || !active.dataset || !active.dataset.mac || !active.dataset.role) {
+        return null;
+      }
+      return {
+        mac: active.dataset.mac,
+        role: active.dataset.role,
+        start: typeof active.selectionStart === 'number' ? active.selectionStart : null,
+        end: typeof active.selectionEnd === 'number' ? active.selectionEnd : null
+      };
+    }
+
+    function restoreActiveInput(state) {
+      if (!state) return;
+      const selector = '#deviceRows input[data-mac="' + CSS.escape(state.mac) + '"][data-role="' + CSS.escape(state.role) + '"]';
+      const input = document.querySelector(selector);
+      if (!input) return;
+      input.focus();
+      if (state.start !== null && state.end !== null) {
+        input.setSelectionRange(state.start, state.end);
+      }
+    }
+
     function renderDevices(devices) {
       const tbody = document.getElementById('deviceRows');
+      const drafts = collectDeviceDrafts();
+      const activeState = getActiveInputState();
       if (!devices.length) {
         tbody.innerHTML = '<tr><td colspan="9">No devices known yet. Run a scan and wait for discovery.</td></tr>';
         return;
       }
 
       tbody.innerHTML = devices.map((device, index) => {
+        const draft = drafts[device.mac] || {};
+        const nameValue = draft.name ?? device.name;
+        const pollValue = draft.poll ?? device.pollIntervalSec;
         const temps = (device.temperatures || []).length
           ? device.temperatures.map((t, i) => 'T' + (i + 1) + ': ' + Number(t).toFixed(1) + '°C').join('<br>')
           : '--';
         const battery = device.batteryLevel >= 0 ? device.batteryLevel + '%' : '--';
         const lastSeen = device.lastSeen ? new Date(device.lastSeen).toLocaleString() : '--';
         return '<tr>' +
-          '<td><input type="text" id="name-' + index + '" value="' + escapeHtml(device.name) + '"></td>' +
+          '<td><input type="text" id="name-' + index + '" data-mac="' + escapeHtml(device.mac) + '" data-role="name" value="' + escapeHtml(nameValue) + '"></td>' +
           '<td>' + escapeHtml(device.mac) + '</td>' +
           '<td class="small">' + escapeHtml(device.uid) + '</td>' +
           '<td><span class="status ' + statusClass(device.status) + '">' + escapeHtml(device.status || '--') + '</span></td>' +
           '<td class="temps">' + temps + '</td>' +
           '<td>' + escapeHtml(battery) + '</td>' +
           '<td>' + escapeHtml(lastSeen) + '</td>' +
-          '<td><input type="number" min="1" id="poll-' + index + '" value="' + escapeHtml(device.pollIntervalSec) + '"></td>' +
+          '<td><input type="number" min="1" id="poll-' + index + '" data-mac="' + escapeHtml(device.mac) + '" data-role="poll" value="' + escapeHtml(pollValue) + '"></td>' +
           '<td><button onclick="saveDevice(\'' + encodeURIComponent(device.mac) + '\', ' + index + ')">Save</button></td>' +
           '</tr>';
       }).join('');
+      restoreActiveInput(activeState);
     }
 
     async function loadDevices() {
