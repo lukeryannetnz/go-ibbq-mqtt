@@ -49,6 +49,12 @@ sudo systemctl restart go-ibbq-mqtt
 sudo systemctl status go-ibbq-mqtt
 ```
 
+If the distro `golang` package is missing or too old, rerun the installer with:
+
+```bash
+./install.sh --install-go
+```
+
 The values in `/etc/default/go-ibbq-mqtt` are what the service will use on boot. Editing `.env` in the repo only affects manual runs from the checkout directory.
 The service runs as user `ibbq`, and the install script adds that user to the `bluetooth` group so the BLE adapter is accessible under systemd as well.
 
