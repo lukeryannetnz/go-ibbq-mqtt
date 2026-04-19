@@ -26,6 +26,37 @@ $ GOOS=darwin go build
 
 ## Usage
 
+### New machine setup
+
+For a fresh Raspberry Pi or Debian machine, install the OS packages, clone the repo, build the binary, and then install the service:
+
+```bash
+sudo apt update
+sudo apt install -y git golang bluez
+
+git clone http://gitea.bracken.life:3000/jaidan/ibbq-multi.git
+cd ibbq-multi
+
+GOOS=linux go build
+
+sudo usermod -aG bluetooth "$USER"
+newgrp bluetooth
+
+cp .env.example .env
+nano .env
+
+sudo useradd -r -s /usr/sbin/nologin ibbq || true
+sudo install -m 0755 go-ibbq-mqtt /usr/local/bin/go-ibbq-mqtt
+sudo cp .env.example /etc/default/go-ibbq-mqtt
+sudo nano /etc/default/go-ibbq-mqtt
+sudo cp go-ibbq-mqtt.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now go-ibbq-mqtt
+sudo systemctl status go-ibbq-mqtt
+```
+
+The values in `/etc/default/go-ibbq-mqtt` are what the service will use on boot. Editing `.env` in the repo only affects manual runs from the checkout directory.
+
 ### Configuration via env
 Copy `.env.example` to `.env` and edit the values before running:
 
