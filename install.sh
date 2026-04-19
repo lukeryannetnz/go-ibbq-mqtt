@@ -10,6 +10,7 @@ TEMPLATE_PATH="${TEMPLATE_PATH:-/etc/systemd/system/go-ibbq-mqtt@.service}"
 
 OVERWRITE_ENV=0
 ENABLE_SERVICE=1
+MIN_GO_VERSION="${MIN_GO_VERSION:-1.21}"
 
 usage() {
 	cat <<'EOF'
@@ -21,6 +22,10 @@ Options:
   --overwrite-env  Replace an existing /etc/default/go-ibbq-mqtt
   --skip-enable    Install files but do not enable/start the service
 EOF
+}
+
+version_ge() {
+	[[ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | tail -n1)" == "$1" ]]
 }
 
 while [[ $# -gt 0 ]]; do
@@ -47,6 +52,18 @@ done
 
 if [[ ! -f go-ibbq-mqtt.service ]] || [[ ! -f go-ibbq-mqtt@.service ]] || [[ ! -f .env.example ]]; then
 	echo "Run this script from the repository root." >&2
+	exit 1
+fi
+
+if ! command -v go >/dev/null 2>&1; then
+	echo "Go is not installed. Install Go ${MIN_GO_VERSION}+ first." >&2
+	exit 1
+fi
+
+GO_VERSION_RAW="$(go version)"
+GO_VERSION="$(awk '{print $3}' <<<"$GO_VERSION_RAW" | sed 's/^go//')"
+if [[ -z "$GO_VERSION" ]] || ! version_ge "$GO_VERSION" "$MIN_GO_VERSION"; then
+	echo "Go ${MIN_GO_VERSION}+ is required, found: ${GO_VERSION_RAW}" >&2
 	exit 1
 fi
 
