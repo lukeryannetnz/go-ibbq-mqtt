@@ -1,7 +1,7 @@
 # Inkbird wireless thermometer MQTT publisher 
 ![Go](https://github.com/lukeryannetnz/go-ibbq-mqtt/workflows/Go/badge.svg)
 
-Inspired by the example apps in [`sworisbreathing/go-ibbq`](https://github.com/sworisbreathing/go-ibbq), this is a simple app that connects to an Inkbird wireless thermometer over Bluetooth using [`sworisbreathing/go-ibbq`](https://github.com/sworisbreathing/go-ibbq). It publishes the data it receives to an MQTT topic using [`paho.mqtt.golang`](github.com/eclipse/paho.mqtt.golang)
+This project connects to an Inkbird wireless thermometer over Bluetooth and publishes readings to MQTT using a vendored `internal/ibbq` package plus [`paho.mqtt.golang`](https://github.com/eclipse/paho.mqtt.golang).
 
 ## Building
 
@@ -10,6 +10,13 @@ Inspired by the example apps in [`sworisbreathing/go-ibbq`](https://github.com/s
 ```bash
 $ GOOS=linux go build
 ```
+
+> **Raspberry Pi / Debian / Ubuntu note:** If you install Go via `apt`, the `GOROOT` env var may not be set correctly (e.g. pointing to `/usr/local/go` which doesn't exist). Fix it by setting `GOROOT` explicitly:
+> ```bash
+> export GOROOT=/usr/lib/go-1.22
+> export PATH=$GOROOT/bin:$PATH
+> ```
+> Add these lines to `~/.profile` or `~/.bashrc` to make them permanent.
 
 ### OS X
 
