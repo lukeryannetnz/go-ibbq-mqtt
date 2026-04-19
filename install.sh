@@ -57,6 +57,7 @@ fi
 
 if ! command -v go >/dev/null 2>&1; then
 	echo "Go is not installed. Install Go ${MIN_GO_VERSION}+ first." >&2
+	echo "Suggested command on Debian/Raspberry Pi OS: sudo apt update && sudo apt install -y golang" >&2
 	exit 1
 fi
 
@@ -64,6 +65,8 @@ GO_VERSION_RAW="$(go version)"
 GO_VERSION="$(awk '{print $3}' <<<"$GO_VERSION_RAW" | sed 's/^go//')"
 if [[ -z "$GO_VERSION" ]] || ! version_ge "$GO_VERSION" "$MIN_GO_VERSION"; then
 	echo "Go ${MIN_GO_VERSION}+ is required, found: ${GO_VERSION_RAW}" >&2
+	echo "If apt provides an older Go, install a newer release before rerunning this script." >&2
+	echo "Suggested first try on Debian/Raspberry Pi OS: sudo apt update && sudo apt install -y golang" >&2
 	exit 1
 fi
 
