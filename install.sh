@@ -50,10 +50,8 @@ if [[ ! -f go-ibbq-mqtt.service ]] || [[ ! -f go-ibbq-mqtt@.service ]] || [[ ! -
 	exit 1
 fi
 
-if [[ ! -x ./go-ibbq-mqtt ]]; then
-	echo "Building go-ibbq-mqtt binary"
-	GOOS=linux go build
-fi
+echo "Building go-ibbq-mqtt binary"
+GOOS=linux go build
 
 if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
 	echo "Creating service user $SERVICE_USER"
