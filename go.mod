@@ -2,8 +2,6 @@ module github.com/lukeryannetnz/go-ibbq-mqtt
 
 go 1.21
 
-toolchain go1.22.2
-
 require (
 	github.com/eclipse/paho.mqtt.golang v1.2.0
 	github.com/go-ble/ble v0.0.0-20181002102605-e78417b510a3
