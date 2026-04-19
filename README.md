@@ -9,6 +9,13 @@ Known BLE name variants seen in scans:
 
 Both variants are treated as supported devices by the scanner and connect filter.
 
+Observed hardware note:
+- On this unit, only probe 1 is valid.
+- Temperatures 2, 3, 4, 5, and 6 are not valid on this hardware.
+- Probe 2 has no probe inserted.
+- Probes 3, 4, 5, and 6 are not configured in the hardware.
+- Ignore readings of `0C` and `6553.5C` for those unused slots.
+
 ## Building
 
 ### Linux
