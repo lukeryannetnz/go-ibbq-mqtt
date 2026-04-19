@@ -3,6 +3,12 @@
 
 This project connects to an Inkbird wireless thermometer over Bluetooth and publishes readings to MQTT using a vendored `internal/ibbq` package plus [`paho.mqtt.golang`](https://github.com/eclipse/paho.mqtt.golang).
 
+Known BLE name variants seen in scans:
+- `iBBQ`
+- `xBBQ`
+
+Both variants are treated as supported devices by the scanner and connect filter.
+
 ## Building
 
 ### Linux

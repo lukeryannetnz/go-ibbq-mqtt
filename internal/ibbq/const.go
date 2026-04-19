@@ -15,7 +15,11 @@ limitations under the License.
 */
 package ibbq
 
-import "github.com/mgutz/logxi/v1"
+import (
+	"strings"
+
+	"github.com/mgutz/logxi/v1"
+)
 
 // SettingResult NOTIFY
 const SettingResult = "fff1"
@@ -32,8 +36,21 @@ const RealTimeData = "fff4"
 // SettingData WRITE
 const SettingData = "fff5"
 
-// DeviceName is the name we look for when we scan.
+// DeviceName is the legacy primary device name.
 const DeviceName = "iBBQ"
+
+// SupportedDeviceNames are the known BLE local-name variants seen in the field.
+var SupportedDeviceNames = []string{"iBBQ", "xBBQ"}
+
+// IsSupportedDeviceName reports whether a BLE local name matches a known iBBQ variant.
+func IsSupportedDeviceName(name string) bool {
+	for _, candidate := range SupportedDeviceNames {
+		if strings.EqualFold(name, candidate) {
+			return true
+		}
+	}
+	return false
+}
 
 // Status represents our connection status
 type Status string

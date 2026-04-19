@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -28,7 +27,7 @@ func ScanForDevices(ctx context.Context, duration time.Duration) ([]string, erro
 			mu.Unlock()
 		},
 		func(a ble.Advertisement) bool {
-			return strings.EqualFold(a.LocalName(), ibbq.DeviceName) && a.Connectable()
+			return ibbq.IsSupportedDeviceName(a.LocalName()) && a.Connectable()
 		},
 	)
 

@@ -5,6 +5,24 @@ import (
 	"time"
 )
 
+func TestIsSupportedDeviceName(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{name: "iBBQ", want: true},
+		{name: "xBBQ", want: true},
+		{name: "ibbq", want: true},
+		{name: "other", want: false},
+	}
+
+	for _, tc := range tests {
+		if got := IsSupportedDeviceName(tc.name); got != tc.want {
+			t.Fatalf("IsSupportedDeviceName(%q) = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
 func TestRealTimeDataReceivedFiltersNoProbeSentinel(t *testing.T) {
 	gotCh := make(chan []float64, 1)
 	thermometer := Ibbq{

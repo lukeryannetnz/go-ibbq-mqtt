@@ -391,7 +391,7 @@ func (ibbq *Ibbq) Disconnect(force bool) error {
 }
 
 func (ibbq *Ibbq) filter(a ble.Advertisement) bool {
-	if !strings.EqualFold(a.LocalName(), DeviceName) || !a.Connectable() {
+	if !IsSupportedDeviceName(a.LocalName()) || !a.Connectable() {
 		return false
 	}
 	if ibbq.config.TargetMAC == "" {
