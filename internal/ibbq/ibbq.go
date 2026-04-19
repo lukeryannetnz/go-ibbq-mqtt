@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-ble/ble"
@@ -56,13 +57,27 @@ type DisconnectedHandler func()
 // StatusUpdatedHandler is a callback for status updates.
 type StatusUpdatedHandler func(Status)
 
+var (
+	bleInitOnce sync.Once
+	bleInitErr  error
+)
+
+// InitBLE initializes the process-wide default BLE device once.
+func InitBLE() error {
+	bleInitOnce.Do(func() {
+		var d ble.Device
+		d, bleInitErr = NewDevice("default")
+		if bleInitErr != nil {
+			return
+		}
+		ble.SetDefaultDevice(d)
+	})
+	return bleInitErr
+}
+
 // NewIbbq creates a new Ibbq.
-// Note: this calls ble.SetDefaultDevice, which is process-wide state.
-// Running multiple Ibbq instances concurrently in the same process may cause conflicts.
 func NewIbbq(ctx context.Context, config Configuration, disconnectedHandler DisconnectedHandler, temperatureReceivedHandler TemperatureReceivedHandler, batteryLevelReceivedHandler BatteryLevelReceivedHandler, statusUpdatedHandler StatusUpdatedHandler) (ibbq Ibbq, err error) {
-	d, err := NewDevice("default")
-	ble.SetDefaultDevice(d)
-	return Ibbq{ctx, config, d, disconnectedHandler, temperatureReceivedHandler, batteryLevelReceivedHandler, statusUpdatedHandler, nil, nil, nil, Disconnected}, err
+	return Ibbq{ctx, config, nil, disconnectedHandler, temperatureReceivedHandler, batteryLevelReceivedHandler, statusUpdatedHandler, nil, nil, nil, Disconnected}, nil
 }
 
 func (ibbq *Ibbq) handleDisconnects() {
@@ -194,12 +209,16 @@ func (ibbq *Ibbq) subscribeToRealTimeData() error {
 func (ibbq *Ibbq) realTimeDataReceived() ble.NotificationHandler {
 	return func(data []byte) {
 		logger.Debug("received real-time data", hex.EncodeToString(data))
-		probeCount := len(data) / 2
-		probeData := make([]float64, probeCount)
-		for i := range data {
-			if i%2 == 0 {
-				probeData[i/2] = float64(binary.LittleEndian.Uint16(data[i:i+2])) / 10
+		var probeData []float64
+		for i := 0; i+1 < len(data); i += 2 {
+			raw := binary.LittleEndian.Uint16(data[i : i+2])
+			if raw == 0xFFF6 {
+				continue
 			}
+			probeData = append(probeData, float64(raw)/10)
+		}
+		if len(probeData) == 0 {
+			return
 		}
 		go ibbq.temperatureReceivedHandler(probeData)
 	}

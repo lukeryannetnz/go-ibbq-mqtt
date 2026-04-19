@@ -17,8 +17,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-ble/ble"
@@ -82,16 +85,48 @@ func configureEnv() {
 	}
 }
 
-func readDeviceConfig() deviceConfig {
-	name := os.Getenv("DEVICE_NAME")
-	if name == "" {
-		name = "default"
+func splitTrimmed(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
+}
+
+func readDeviceConfigs() []deviceConfig {
+	namesStr := os.Getenv("DEVICE_NAMES")
+	macsStr := os.Getenv("DEVICE_MACS")
+	if namesStr == "" && macsStr == "" {
+		name := os.Getenv("DEVICE_NAME")
+		if name == "" {
+			name = "default"
+		}
+		return []deviceConfig{{
+			mac:  os.Getenv("DEVICE_MAC"),
+			name: name,
+		}}
 	}
 
-	return deviceConfig{
-		mac:  os.Getenv("DEVICE_MAC"),
-		name: name,
+	names := splitTrimmed(namesStr)
+	macs := splitTrimmed(macsStr)
+	for i := len(names); i < len(macs); i++ {
+		names = append(names, fmt.Sprintf("device%d", i+1))
 	}
+
+	configs := make([]deviceConfig, len(macs))
+	for i := range macs {
+		name := fmt.Sprintf("device%d", i+1)
+		if i < len(names) && names[i] != "" {
+			name = names[i]
+		}
+		configs[i] = deviceConfig{
+			mac:  macs[i],
+			name: name,
+		}
+	}
+	return configs
 }
 
 func connectWithRetry(ctx context.Context, dev deviceConfig) {
@@ -184,7 +219,7 @@ func main() {
 																	
 `)
 	configureEnv()
-	dev := readDeviceConfig()
+	devs := readDeviceConfigs()
 
 	logger.Debug("initializing context")
 	ctx1, cancel := context.WithCancel(context.Background())
@@ -194,12 +229,23 @@ func main() {
 	logger.Debug("context initialized")
 
 	mc.Init()
+	if err := ibbq.InitBLE(); err != nil {
+		logger.Fatal("BLE init failed", "err", err)
+	}
 	port := os.Getenv("WEB_PORT")
 	if port == "" {
 		port = "8080"
 	}
 	go startWebServer(port)
 
-	connectWithRetry(ctx, dev)
+	var wg sync.WaitGroup
+	for _, dev := range devs {
+		wg.Add(1)
+		go func(d deviceConfig) {
+			defer wg.Done()
+			connectWithRetry(ctx, d)
+		}(dev)
+	}
+	wg.Wait()
 	logger.Info("Exiting")
 }
