@@ -28,7 +28,7 @@ import (
 const registryPath = "/var/lib/go-ibbq-mqtt/registry.json"
 
 var logger = log.New("main")
-var mc = NewMqttClient()
+var mc MqttClient
 
 func configureEnv() {
 	err := godotenv.Load()
@@ -59,6 +59,7 @@ func main() {
 	if err := registry.Load(registryPath); err != nil {
 		logger.Fatal("Failed to load registry", "err", err)
 	}
+	mc = NewMqttClient(registry)
 
 	ctx1, cancel := context.WithCancel(context.Background())
 	defer cancel()

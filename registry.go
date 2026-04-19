@@ -33,6 +33,12 @@ type TrendSeries struct {
 	Points []TrendPoint `json:"points"`
 }
 
+type MQTTPublishRecord struct {
+	Timestamp time.Time `json:"timestamp"`
+	Topic     string    `json:"topic"`
+	Payload   string    `json:"payload"`
+}
+
 // DeviceConfig is the persisted part of a device record.
 type DeviceConfig struct {
 	MAC             string    `json:"mac"`
@@ -67,10 +73,12 @@ type RegistryFile struct {
 
 // Registry is the in-memory store.
 type Registry struct {
-	mu      sync.RWMutex
-	config  AppConfig
-	devices map[string]*DeviceRecord
-	path    string
+	mu              sync.RWMutex
+	config          AppConfig
+	devices         map[string]*DeviceRecord
+	path            string
+	mqttConnected   bool
+	recentPublishes []MQTTPublishRecord
 }
 
 func defaultAppConfig() AppConfig {
@@ -434,6 +442,39 @@ func (r *Registry) TrendSeries() []TrendSeries {
 		}
 	}
 	return series
+}
+
+func (r *Registry) SetMQTTConnected(connected bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.mqttConnected = connected
+}
+
+func (r *Registry) RecordMQTTPublish(topic string, payload interface{}) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	record := MQTTPublishRecord{
+		Timestamp: time.Now().UTC(),
+		Topic:     topic,
+		Payload:   fmt.Sprint(payload),
+	}
+	r.recentPublishes = append([]MQTTPublishRecord{record}, r.recentPublishes...)
+	if len(r.recentPublishes) > 5 {
+		r.recentPublishes = r.recentPublishes[:5]
+	}
+}
+
+func (r *Registry) MQTTConnected() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.mqttConnected
+}
+
+func (r *Registry) RecentMQTTPublishes() []MQTTPublishRecord {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return append([]MQTTPublishRecord(nil), r.recentPublishes...)
 }
 
 func (r *Registry) ShouldPublishTemperature(mac string) (string, bool) {

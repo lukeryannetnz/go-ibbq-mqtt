@@ -13,6 +13,11 @@ type webServer struct {
 	dm       *DeviceManager
 }
 
+type mqttStatusResponse struct {
+	Connected      bool                `json:"connected"`
+	RecentPublishes []MQTTPublishRecord `json:"recentPublishes"`
+}
+
 type deviceResponse struct {
 	MAC             string    `json:"mac"`
 	UID             string    `json:"uid"`
@@ -45,6 +50,7 @@ func startWebServer(port string, registry *Registry, dm *DeviceManager) {
 	mux.HandleFunc("/api/devices", server.handleDevices)
 	mux.HandleFunc("/api/devices/", server.handleDevice)
 	mux.HandleFunc("/api/trends", server.handleTrends)
+	mux.HandleFunc("/api/mqtt", server.handleMQTT)
 	mux.HandleFunc("/api/config", server.handleConfig)
 	mux.HandleFunc("/api/scan", server.handleScan)
 	mux.HandleFunc("/", server.handleIndex)
@@ -174,6 +180,17 @@ func (s *webServer) handleTrends(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.registry.TrendSeries())
 }
 
+func (s *webServer) handleMQTT(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	writeJSON(w, http.StatusOK, mqttStatusResponse{
+		Connected:      s.registry.MQTTConnected(),
+		RecentPublishes: s.registry.RecentMQTTPublishes(),
+	})
+}
+
 func (s *webServer) handleScan(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -218,6 +235,12 @@ var indexHTML = `<!DOCTYPE html>
     .axis { stroke: #b7aa9c; stroke-width: 1; }
     .grid { stroke: #ece3d8; stroke-width: 1; }
     .axis-label { fill: #6c6257; font-size: 11px; }
+    .mqtt-ok { color: #2e7d32; font-weight: bold; }
+    .mqtt-bad { color: #b3261e; font-weight: bold; }
+    .publish-list { margin: 10px 0 0 0; padding-left: 18px; }
+    .publish-list li { margin-bottom: 8px; }
+    .publish-topic { font-weight: bold; }
+    .publish-payload { color: #5a5148; word-break: break-all; }
   </style>
 </head>
 <body>
@@ -236,6 +259,12 @@ var indexHTML = `<!DOCTYPE html>
         <button class="secondary" id="scanBtn" onclick="triggerScan()">Scan Now</button>
       </div>
     </div>
+  </div>
+
+  <div class="panel">
+    <h2>MQTT</h2>
+    <div id="mqttStatus" class="small">Loading MQTT status...</div>
+    <ol id="mqttPublishes" class="publish-list"></ol>
   </div>
 
   <div class="panel">
@@ -431,6 +460,27 @@ var indexHTML = `<!DOCTYPE html>
       renderTrendChart(series);
     }
 
+    async function loadMQTT() {
+      const res = await fetch('/api/mqtt');
+      const mqtt = await res.json();
+      const statusEl = document.getElementById('mqttStatus');
+      statusEl.className = mqtt.connected ? 'mqtt-ok' : 'mqtt-bad';
+      statusEl.textContent = mqtt.connected ? 'Connected' : 'Disconnected';
+
+      const listEl = document.getElementById('mqttPublishes');
+      if (!mqtt.recentPublishes || !mqtt.recentPublishes.length) {
+        listEl.innerHTML = '<li class="small">No MQTT publishes recorded yet.</li>';
+        return;
+      }
+      listEl.innerHTML = mqtt.recentPublishes.map(item => {
+        const ts = item.timestamp ? new Date(item.timestamp).toLocaleString() : '--';
+        return '<li>' +
+          '<div><span class="publish-topic">' + escapeHtml(item.topic) + '</span> <span class="small">(' + escapeHtml(ts) + ')</span></div>' +
+          '<div class="publish-payload">' + escapeHtml(item.payload) + '</div>' +
+        '</li>';
+      }).join('');
+    }
+
     async function saveDevice(encodedMac, index) {
       const mac = decodeURIComponent(encodedMac);
       const name = document.getElementById('name-' + index).value;
@@ -497,12 +547,14 @@ var indexHTML = `<!DOCTYPE html>
 
     async function refreshAll() {
       await loadConfig();
+      await loadMQTT();
       await loadDevices();
       await loadTrends();
     }
 
     refreshAll();
     setInterval(async () => {
+      await loadMQTT();
       await loadDevices();
       await loadTrends();
     }, 5000);
