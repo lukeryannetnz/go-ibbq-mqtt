@@ -60,6 +60,9 @@ if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
 	sudo useradd -r -s /usr/sbin/nologin "$SERVICE_USER"
 fi
 
+echo "Adding $SERVICE_USER to bluetooth group"
+sudo usermod -aG bluetooth "$SERVICE_USER"
+
 echo "Installing binary to $BIN_PATH"
 sudo install -m 0755 ./go-ibbq-mqtt "$BIN_PATH"
 

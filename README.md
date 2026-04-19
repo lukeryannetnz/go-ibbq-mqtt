@@ -50,6 +50,7 @@ sudo systemctl status go-ibbq-mqtt
 ```
 
 The values in `/etc/default/go-ibbq-mqtt` are what the service will use on boot. Editing `.env` in the repo only affects manual runs from the checkout directory.
+The service runs as user `ibbq`, and the install script adds that user to the `bluetooth` group so the BLE adapter is accessible under systemd as well.
 
 If you prefer to install manually instead of using the script:
 
