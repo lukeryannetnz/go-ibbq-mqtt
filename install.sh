@@ -226,8 +226,13 @@ echo "Reloading systemd"
 sudo systemctl daemon-reload
 
 if [[ "$ENABLE_SERVICE" -eq 1 ]]; then
-	echo "Enabling and starting go-ibbq-mqtt.service"
-	sudo systemctl enable --now go-ibbq-mqtt
+	if sudo systemctl is-enabled go-ibbq-mqtt >/dev/null 2>&1; then
+		echo "Restarting existing go-ibbq-mqtt.service"
+		sudo systemctl restart go-ibbq-mqtt
+	else
+		echo "Enabling and starting go-ibbq-mqtt.service"
+		sudo systemctl enable --now go-ibbq-mqtt
+	fi
 	sudo systemctl status --no-pager go-ibbq-mqtt
 else
 	echo "Skipping systemctl enable/start"
