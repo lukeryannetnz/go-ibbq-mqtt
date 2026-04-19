@@ -45,6 +45,58 @@ Key settings:
 LOGXI=*=INF ./go-ibbq-mqtt
 ```
 
+### Raspberry Pi Bluetooth permissions
+
+If the binary starts only with `sudo` and fails with an error like `hci0: can't down device: operation not permitted`, add your user to the `bluetooth` group and refresh the shell session:
+
+```bash
+sudo usermod -aG bluetooth "$USER"
+newgrp bluetooth
+```
+
+Then run the binary again without `sudo`:
+
+```bash
+LOGXI=*=INF ./go-ibbq-mqtt
+```
+
+### Run on boot with systemd
+
+This repo includes both a single-device unit (`go-ibbq-mqtt.service`) and a template unit for multiple thermometers (`go-ibbq-mqtt@.service`).
+
+Install the binary, env file, and unit on the Pi:
+
+```bash
+sudo useradd -r -s /usr/sbin/nologin ibbq
+sudo install -m 0755 go-ibbq-mqtt /usr/local/bin/go-ibbq-mqtt
+sudo cp .env.example /etc/default/go-ibbq-mqtt
+sudo cp go-ibbq-mqtt.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now go-ibbq-mqtt
+```
+
+Useful service commands:
+
+```bash
+sudo systemctl status go-ibbq-mqtt
+sudo journalctl -u go-ibbq-mqtt -f
+sudo systemctl restart go-ibbq-mqtt
+```
+
+The important bit is `systemctl enable`: that creates the boot-time symlink, so the service starts automatically on boot. `--now` also starts it immediately without waiting for a reboot.
+
+For multiple devices, use the template unit and one env file per device:
+
+```bash
+sudo install -m 0755 go-ibbq-mqtt /usr/local/bin/go-ibbq-mqtt
+sudo cp .env.probe1.example /etc/default/go-ibbq-mqtt.probe1
+sudo cp .env.probe2.example /etc/default/go-ibbq-mqtt.probe2
+sudo cp go-ibbq-mqtt@.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now go-ibbq-mqtt@probe1
+sudo systemctl enable --now go-ibbq-mqtt@probe2
+```
+
 ### example terminal output
 ```bash
 $ LOGXI=*=INF ./go-ibbq-mqtt

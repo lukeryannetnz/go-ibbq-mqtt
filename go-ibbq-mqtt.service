@@ -1,0 +1,20 @@
+[Unit]
+Description=iBBQ to MQTT bridge
+After=network.target bluetooth.target
+Wants=bluetooth.target
+
+[Service]
+Type=simple
+User=ibbq
+EnvironmentFile=/etc/default/go-ibbq-mqtt
+ExecStart=/usr/local/bin/go-ibbq-mqtt
+Restart=always
+RestartSec=10
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=go-ibbq-mqtt
+
+[Install]
+WantedBy=multi-user.target
