@@ -44,6 +44,7 @@ func startWebServer(port string, registry *Registry, dm *DeviceManager) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/devices", server.handleDevices)
 	mux.HandleFunc("/api/devices/", server.handleDevice)
+	mux.HandleFunc("/api/trends", server.handleTrends)
 	mux.HandleFunc("/api/config", server.handleConfig)
 	mux.HandleFunc("/api/scan", server.handleScan)
 	mux.HandleFunc("/", server.handleIndex)
@@ -165,6 +166,14 @@ func (s *webServer) handleConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *webServer) handleTrends(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	writeJSON(w, http.StatusOK, s.registry.TrendSeries())
+}
+
 func (s *webServer) handleScan(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -201,6 +210,14 @@ var indexHTML = `<!DOCTYPE html>
     .inline { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
     .field { min-width: 180px; }
     .temps { white-space: nowrap; }
+    .chart-wrap { overflow-x: auto; }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; font-size: 12px; color: #4f463d; }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+    .legend-swatch { width: 12px; height: 12px; border-radius: 999px; }
+    svg { width: 100%; min-width: 960px; height: 340px; background: #fff; border: 1px solid #e3d9cc; border-radius: 8px; }
+    .axis { stroke: #b7aa9c; stroke-width: 1; }
+    .grid { stroke: #ece3d8; stroke-width: 1; }
+    .axis-label { fill: #6c6257; font-size: 11px; }
   </style>
 </head>
 <body>
@@ -243,7 +260,18 @@ var indexHTML = `<!DOCTYPE html>
     </table>
   </div>
 
+  <div class="panel">
+    <h2>Temperature Trends</h2>
+    <p class="small">All valid temperature samples from the last 12 hours. 0C and 6553.5C channels are ignored.</p>
+    <div class="chart-wrap">
+      <svg id="trendChart" viewBox="0 0 1100 340" preserveAspectRatio="none"></svg>
+    </div>
+    <div class="legend" id="trendLegend"></div>
+  </div>
+
   <script>
+    const chartPalette = ['#c8553d', '#2f6c8f', '#5a7d2b', '#8b4ea8', '#d18f00', '#00897b', '#7a5230', '#5c6bc0'];
+
     async function loadConfig() {
       const res = await fetch('/api/config');
       const cfg = await res.json();
@@ -294,6 +322,73 @@ var indexHTML = `<!DOCTYPE html>
       const res = await fetch('/api/devices');
       const devices = await res.json();
       renderDevices(devices);
+    }
+
+    function seriesPath(points, minTime, maxTime, minValue, maxValue, dims) {
+      const timeSpan = Math.max(maxTime - minTime, 1);
+      const valueSpan = Math.max(maxValue - minValue, 1);
+      return points.map((point, index) => {
+        const x = dims.left + ((new Date(point.timestamp).getTime() - minTime) / timeSpan) * dims.width;
+        const y = dims.top + dims.height - ((point.value - minValue) / valueSpan) * dims.height;
+        return (index === 0 ? 'M' : 'L') + x.toFixed(2) + ' ' + y.toFixed(2);
+      }).join(' ');
+    }
+
+    function renderTrendChart(series) {
+      const svg = document.getElementById('trendChart');
+      const legend = document.getElementById('trendLegend');
+      if (!series.length || !series.some(item => item.points && item.points.length)) {
+        svg.innerHTML = '<text x="40" y="40" class="axis-label">No valid trend data yet.</text>';
+        legend.innerHTML = '';
+        return;
+      }
+
+      const flattened = series.flatMap(item => item.points.map(point => ({
+        timestamp: new Date(point.timestamp).getTime(),
+        value: point.value
+      })));
+      const minTime = Math.min(...flattened.map(point => point.timestamp));
+      const maxTime = Math.max(...flattened.map(point => point.timestamp));
+      const minValue = Math.min(...flattened.map(point => point.value));
+      const maxValue = Math.max(...flattened.map(point => point.value));
+      const dims = { left: 54, top: 18, width: 1010, height: 270 };
+
+      const gridLines = [];
+      for (let i = 0; i < 5; i++) {
+        const y = dims.top + (dims.height / 4) * i;
+        const value = (maxValue - ((maxValue - minValue) / 4) * i).toFixed(1);
+        gridLines.push('<line class="grid" x1="' + dims.left + '" y1="' + y + '" x2="' + (dims.left + dims.width) + '" y2="' + y + '"></line>');
+        gridLines.push('<text class="axis-label" x="6" y="' + (y + 4) + '">' + value + '°C</text>');
+      }
+      for (let i = 0; i < 6; i++) {
+        const x = dims.left + (dims.width / 5) * i;
+        const timestamp = new Date(minTime + ((maxTime - minTime) / 5) * i);
+        gridLines.push('<line class="grid" x1="' + x + '" y1="' + dims.top + '" x2="' + x + '" y2="' + (dims.top + dims.height) + '"></line>');
+        gridLines.push('<text class="axis-label" x="' + (x - 22) + '" y="316">' + timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '</text>');
+      }
+
+      const lines = series.map((item, index) => {
+        const color = chartPalette[index % chartPalette.length];
+        const path = seriesPath(item.points, minTime, maxTime, minValue, maxValue, dims);
+        return '<path d="' + path + '" fill="none" stroke="' + color + '" stroke-width="2"></path>';
+      }).join('');
+
+      svg.innerHTML =
+        gridLines.join('') +
+        '<line class="axis" x1="' + dims.left + '" y1="' + (dims.top + dims.height) + '" x2="' + (dims.left + dims.width) + '" y2="' + (dims.top + dims.height) + '"></line>' +
+        '<line class="axis" x1="' + dims.left + '" y1="' + dims.top + '" x2="' + dims.left + '" y2="' + (dims.top + dims.height) + '"></line>' +
+        lines;
+
+      legend.innerHTML = series.map((item, index) => {
+        const color = chartPalette[index % chartPalette.length];
+        return '<span class="legend-item"><span class="legend-swatch" style="background:' + color + '"></span>' + escapeHtml(item.name) + '</span>';
+      }).join('');
+    }
+
+    async function loadTrends() {
+      const res = await fetch('/api/trends');
+      const series = await res.json();
+      renderTrendChart(series);
     }
 
     async function saveDevice(encodedMac, index) {
@@ -363,10 +458,14 @@ var indexHTML = `<!DOCTYPE html>
     async function refreshAll() {
       await loadConfig();
       await loadDevices();
+      await loadTrends();
     }
 
     refreshAll();
-    setInterval(loadDevices, 5000);
+    setInterval(async () => {
+      await loadDevices();
+      await loadTrends();
+    }, 5000);
   </script>
 </body>
 </html>`

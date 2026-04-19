@@ -20,7 +20,18 @@ const (
 	defaultDeadCheckerInterval    = 30 * time.Second
 	defaultDiscoveryScanDuration  = 30 * time.Second
 	defaultWebRefreshIntervalSecs = 5
+	trendRetention               = 12 * time.Hour
 )
+
+type TrendPoint struct {
+	Timestamp time.Time `json:"timestamp"`
+	Value     float64   `json:"value"`
+}
+
+type TrendSeries struct {
+	Name   string       `json:"name"`
+	Points []TrendPoint `json:"points"`
+}
 
 // DeviceConfig is the persisted part of a device record.
 type DeviceConfig struct {
@@ -39,6 +50,7 @@ type DeviceRecord struct {
 	Temperatures  []float64
 	BatteryLevel  int
 	lastPublished time.Time
+	sensorHistory map[int][]TrendPoint
 }
 
 // AppConfig is the persisted global configuration.
@@ -110,7 +122,28 @@ func cloneDeviceRecord(r *DeviceRecord) *DeviceRecord {
 	}
 	out := *r
 	out.Temperatures = append([]float64(nil), r.Temperatures...)
+	if r.sensorHistory != nil {
+		out.sensorHistory = make(map[int][]TrendPoint, len(r.sensorHistory))
+		for sensor, points := range r.sensorHistory {
+			out.sensorHistory[sensor] = append([]TrendPoint(nil), points...)
+		}
+	}
 	return &out
+}
+
+func isRealTrendTemperature(value float64) bool {
+	return value != 0 && value != 6553.5
+}
+
+func trimTrendPoints(points []TrendPoint, cutoff time.Time) []TrendPoint {
+	idx := 0
+	for idx < len(points) && points[idx].Timestamp.Before(cutoff) {
+		idx++
+	}
+	if idx == 0 {
+		return points
+	}
+	return append([]TrendPoint(nil), points[idx:]...)
 }
 
 // Load reads registry.json; initialises empty maps if file doesn't exist.
@@ -155,6 +188,7 @@ func (r *Registry) Load(path string) error {
 			Config:       cfg,
 			Status:       "Disconnected",
 			BatteryLevel: -1,
+			sensorHistory: make(map[int][]TrendPoint),
 		}
 	}
 
@@ -217,6 +251,7 @@ func (r *Registry) RegisterDevice(mac string) *DeviceRecord {
 		Config:       cfg,
 		Status:       "Disconnected",
 		BatteryLevel: -1,
+		sensorHistory: make(map[int][]TrendPoint),
 	}
 	r.devices[mac] = record
 	r.mu.Unlock()
@@ -309,6 +344,24 @@ func (r *Registry) UpdateReadings(mac string, temps []float64, battery int) {
 	}
 	if temps != nil {
 		record.Temperatures = append([]float64(nil), temps...)
+		now := time.Now().UTC()
+		cutoff := now.Add(-trendRetention)
+		if record.sensorHistory == nil {
+			record.sensorHistory = make(map[int][]TrendPoint)
+		}
+		for sensor, value := range temps {
+			if !isRealTrendTemperature(value) {
+				continue
+			}
+			points := append(record.sensorHistory[sensor], TrendPoint{
+				Timestamp: now,
+				Value:     value,
+			})
+			record.sensorHistory[sensor] = trimTrendPoints(points, cutoff)
+		}
+		for sensor, points := range record.sensorHistory {
+			record.sensorHistory[sensor] = trimTrendPoints(points, cutoff)
+		}
 	}
 	if battery >= 0 {
 		record.BatteryLevel = battery
@@ -345,6 +398,42 @@ func (r *Registry) DeviceName(mac string) (string, bool) {
 		return "", false
 	}
 	return record.Config.Name, true
+}
+
+func (r *Registry) TrendSeries() []TrendSeries {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	cutoff := time.Now().UTC().Add(-trendRetention)
+	macs := make([]string, 0, len(r.devices))
+	for mac := range r.devices {
+		macs = append(macs, mac)
+	}
+	sort.Strings(macs)
+
+	var series []TrendSeries
+	for _, mac := range macs {
+		record := r.devices[mac]
+		if record == nil || len(record.sensorHistory) == 0 {
+			continue
+		}
+		sensors := make([]int, 0, len(record.sensorHistory))
+		for sensor := range record.sensorHistory {
+			sensors = append(sensors, sensor)
+		}
+		sort.Ints(sensors)
+		for _, sensor := range sensors {
+			points := trimTrendPoints(record.sensorHistory[sensor], cutoff)
+			if len(points) == 0 {
+				continue
+			}
+			series = append(series, TrendSeries{
+				Name:   fmt.Sprintf("%s-%d", record.Config.Name, sensor+1),
+				Points: append([]TrendPoint(nil), points...),
+			})
+		}
+	}
+	return series
 }
 
 func (r *Registry) ShouldPublishTemperature(mac string) (string, bool) {
