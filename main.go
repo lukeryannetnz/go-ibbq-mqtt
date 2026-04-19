@@ -17,12 +17,7 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 
 	"github.com/go-ble/ble"
 	"github.com/joho/godotenv"
@@ -30,50 +25,10 @@ import (
 	log "github.com/mgutz/logxi/v1"
 )
 
+const registryPath = "/var/lib/go-ibbq-mqtt/registry.json"
+
 var logger = log.New("main")
 var mc = NewMqttClient()
-
-type deviceConfig struct {
-	mac  string
-	name string
-}
-
-func temperatureReceived(deviceName string, temperatures []float64) {
-	logger.Info("Received temperature data", "device", deviceName, "temperatures", temperatures)
-
-	t := &temperature{temperatures}
-	mc.Pub(deviceName, "temperatures", t.toJson())
-
-	s := getOrCreateDeviceState(deviceName)
-	s.mu.Lock()
-	s.Temperatures = append([]float64(nil), temperatures...)
-	s.LastSeen = time.Now()
-	s.mu.Unlock()
-}
-
-func batteryLevelReceived(deviceName string, level int) {
-	logger.Info("Received battery data", "device", deviceName, "batteryPct", strconv.Itoa(level))
-
-	b := &batteryLevel{level}
-	mc.Pub(deviceName, "batterylevel", b.toJson())
-
-	s := getOrCreateDeviceState(deviceName)
-	s.mu.Lock()
-	s.BatteryLevel = level
-	s.LastSeen = time.Now()
-	s.mu.Unlock()
-}
-
-func statusUpdated(deviceName string, ibbqStatus ibbq.Status) {
-	logger.Info("Status updated", "device", deviceName, "status", ibbqStatus)
-	publishStatus(deviceName, string(ibbqStatus))
-
-	s := getOrCreateDeviceState(deviceName)
-	s.mu.Lock()
-	s.Status = string(ibbqStatus)
-	s.LastSeen = time.Now()
-	s.mu.Unlock()
-}
 
 func configureEnv() {
 	err := godotenv.Load()
@@ -83,130 +38,6 @@ func configureEnv() {
 		}
 		logger.Warn("No .env file found, using environment variables", "err", err)
 	}
-}
-
-func splitTrimmed(s string) []string {
-	var out []string
-	for _, part := range strings.Split(s, ",") {
-		if trimmed := strings.TrimSpace(part); trimmed != "" {
-			out = append(out, trimmed)
-		}
-	}
-	return out
-}
-
-func readDeviceConfigs() []deviceConfig {
-	namesStr := os.Getenv("DEVICE_NAMES")
-	macsStr := os.Getenv("DEVICE_MACS")
-	if namesStr == "" && macsStr == "" {
-		name := os.Getenv("DEVICE_NAME")
-		if name == "" {
-			name = "default"
-		}
-		return []deviceConfig{{
-			mac:  os.Getenv("DEVICE_MAC"),
-			name: name,
-		}}
-	}
-
-	names := splitTrimmed(namesStr)
-	macs := splitTrimmed(macsStr)
-	for i := len(names); i < len(macs); i++ {
-		names = append(names, fmt.Sprintf("device%d", i+1))
-	}
-
-	configs := make([]deviceConfig, len(macs))
-	for i := range macs {
-		name := fmt.Sprintf("device%d", i+1)
-		if i < len(names) && names[i] != "" {
-			name = names[i]
-		}
-		configs[i] = deviceConfig{
-			mac:  macs[i],
-			name: name,
-		}
-	}
-	return configs
-}
-
-func connectWithRetry(ctx context.Context, dev deviceConfig) {
-	attempts := 0
-	retryDelays := []time.Duration{5 * time.Second, 10 * time.Second, 20 * time.Second}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		done := make(chan struct{})
-		err := tryConnect(ctx, dev, done)
-		if err != nil {
-			attempts++
-			logger.Error("Connection failed", "device", dev.name, "err", err, "attempt", attempts)
-			publishStatus(dev.name, "Disconnected")
-
-			delay := 60 * time.Second
-			if attempts-1 < len(retryDelays) {
-				delay = retryDelays[attempts-1]
-			}
-
-			logger.Info("Retrying", "device", dev.name, "delay", delay)
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(delay):
-			}
-			continue
-		}
-
-		attempts = 0
-		select {
-		case <-ctx.Done():
-			return
-		case <-done:
-			logger.Info("Disconnected, will reconnect", "device", dev.name)
-			publishStatus(dev.name, "Disconnected")
-		}
-	}
-}
-
-func tryConnect(ctx context.Context, dev deviceConfig, done chan struct{}) error {
-	config, err := ibbq.NewConfiguration(60*time.Second, 5*time.Minute)
-	if err != nil {
-		return err
-	}
-
-	config.TargetMAC = dev.mac
-
-	bbq, err := ibbq.NewIbbq(
-		ctx,
-		config,
-		func() {
-			close(done)
-		},
-		func(temperatures []float64) {
-			temperatureReceived(dev.name, temperatures)
-		},
-		func(level int) {
-			batteryLevelReceived(dev.name, level)
-		},
-		func(ibbqStatus ibbq.Status) {
-			statusUpdated(dev.name, ibbqStatus)
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	logger.Info("Connecting to device", "device", dev.name, "targetMAC", dev.mac)
-	if err := bbq.Connect(); err != nil {
-		return err
-	}
-
-	logger.Info("Connected to device", "device", dev.name)
-	return nil
 }
 
 func main() {
@@ -219,33 +50,32 @@ func main() {
 																	
 `)
 	configureEnv()
-	devs := readDeviceConfigs()
 
-	logger.Debug("initializing context")
+	if err := ibbq.InitBLE(); err != nil {
+		logger.Fatal("BLE init failed", "err", err)
+	}
+
+	registry := &Registry{}
+	if err := registry.Load(registryPath); err != nil {
+		logger.Fatal("Failed to load registry", "err", err)
+	}
+
 	ctx1, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	registerInterruptHandler(cancel, ctx1)
 	ctx := ble.WithSigHandler(ctx1, cancel)
-	logger.Debug("context initialized")
 
 	mc.Init()
-	if err := ibbq.InitBLE(); err != nil {
-		logger.Fatal("BLE init failed", "err", err)
-	}
+
 	port := os.Getenv("WEB_PORT")
 	if port == "" {
 		port = "8080"
 	}
-	go startWebServer(port)
 
-	var wg sync.WaitGroup
-	for _, dev := range devs {
-		wg.Add(1)
-		go func(d deviceConfig) {
-			defer wg.Done()
-			connectWithRetry(ctx, d)
-		}(dev)
-	}
-	wg.Wait()
+	dm := NewDeviceManager(registry, mc)
+	go startWebServer(port, registry, dm)
+	go dm.Run(ctx)
+
+	<-ctx.Done()
 	logger.Info("Exiting")
 }

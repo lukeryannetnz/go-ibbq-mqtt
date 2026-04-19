@@ -5,56 +5,48 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 )
 
-type deviceState struct {
-	mu           sync.RWMutex `json:"-"`
-	Name         string
-	Temperatures []float64
-	BatteryLevel int
-	Status       string
-	LastSeen     time.Time
+type webServer struct {
+	registry *Registry
+	dm       *DeviceManager
 }
 
-func (s *deviceState) snapshot() deviceState {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+type deviceResponse struct {
+	MAC             string    `json:"mac"`
+	UID             string    `json:"uid"`
+	Name            string    `json:"name"`
+	PollIntervalSec int       `json:"pollIntervalSec"`
+	FirstSeen       time.Time `json:"firstSeen"`
+	Status          string    `json:"status"`
+	LastSeen        time.Time `json:"lastSeen"`
+	Temperatures    []float64 `json:"temperatures"`
+	BatteryLevel    int       `json:"batteryLevel"`
+}
 
-	temperatures := append([]float64(nil), s.Temperatures...)
-	return deviceState{
-		Name:         s.Name,
-		Temperatures: temperatures,
-		BatteryLevel: s.BatteryLevel,
-		Status:       s.Status,
-		LastSeen:     s.LastSeen,
+func toDeviceResponse(record *DeviceRecord) deviceResponse {
+	return deviceResponse{
+		MAC:             record.Config.MAC,
+		UID:             record.Config.UID,
+		Name:            record.Config.Name,
+		PollIntervalSec: record.Config.PollIntervalSec,
+		FirstSeen:       record.Config.FirstSeen,
+		Status:          record.Status,
+		LastSeen:        record.LastSeen,
+		Temperatures:    append([]float64(nil), record.Temperatures...),
+		BatteryLevel:    record.BatteryLevel,
 	}
 }
 
-var (
-	deviceStates   = make(map[string]*deviceState)
-	deviceStatesMu sync.RWMutex
-)
-
-func getOrCreateDeviceState(name string) *deviceState {
-	deviceStatesMu.Lock()
-	defer deviceStatesMu.Unlock()
-
-	if s, ok := deviceStates[name]; ok {
-		return s
-	}
-
-	s := &deviceState{Name: name}
-	deviceStates[name] = s
-	return s
-}
-
-func startWebServer(port string) {
+func startWebServer(port string, registry *Registry, dm *DeviceManager) {
+	server := &webServer{registry: registry, dm: dm}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/devices", handleDeviceList)
-	mux.HandleFunc("/api/devices/", handleDevice)
-	mux.HandleFunc("/", handleIndex)
+	mux.HandleFunc("/api/devices", server.handleDevices)
+	mux.HandleFunc("/api/devices/", server.handleDevice)
+	mux.HandleFunc("/api/config", server.handleConfig)
+	mux.HandleFunc("/api/scan", server.handleScan)
+	mux.HandleFunc("/", server.handleIndex)
 
 	addr := fmt.Sprintf(":%s", port)
 	logger.Info("Starting web server", "addr", addr)
@@ -63,68 +55,323 @@ func startWebServer(port string) {
 	}
 }
 
-func handleDeviceList(w http.ResponseWriter, _ *http.Request) {
-	deviceStatesMu.RLock()
-	states := make([]deviceState, 0, len(deviceStates))
-	for _, s := range deviceStates {
-		states = append(states, s.snapshot())
-	}
-	deviceStatesMu.RUnlock()
-
+func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(states)
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
 }
 
-func handleDevice(w http.ResponseWriter, r *http.Request) {
-	name := strings.TrimPrefix(r.URL.Path, "/api/devices/")
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
+}
 
-	deviceStatesMu.RLock()
-	s, ok := deviceStates[name]
-	deviceStatesMu.RUnlock()
-	if !ok {
+func (s *webServer) handleDevices(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	records := s.registry.All()
+	resp := make([]deviceResponse, 0, len(records))
+	for _, record := range records {
+		resp = append(resp, toDeviceResponse(record))
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *webServer) handleDevice(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/devices/")
+	parts := strings.Split(path, "/")
+	if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
 		http.NotFound(w, r)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(s.snapshot())
+	mac := normalizeMAC(parts[0])
+	if len(parts) == 1 {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		record := s.registry.Get(mac)
+		if record == nil {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, http.StatusOK, toDeviceResponse(record))
+		return
+	}
+
+	if r.Method != http.MethodPut {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	switch parts[1] {
+	case "name":
+		var body struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+		if err := s.registry.SetName(mac, body.Name); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	case "poll":
+		var body struct {
+			IntervalSec int `json:"intervalSec"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+		if err := s.registry.SetPollInterval(mac, body.IntervalSec); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	default:
+		http.NotFound(w, r)
+		return
+	}
+
+	record := s.registry.Get(mac)
+	if record == nil {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, toDeviceResponse(record))
 }
 
-var indexHTML = "<!DOCTYPE html>\n" +
-	"<html>\n" +
-	"<head>\n" +
-	"<meta charset=\"utf-8\">\n" +
-	"<meta http-equiv=\"refresh\" content=\"5\">\n" +
-	"<title>iBBQ Monitor</title>\n" +
-	"<style>\n" +
-	"body { font-family: monospace; padding: 1em; }\n" +
-	".device { border: 1px solid #ccc; padding: 1em; margin: 0.5em 0; display: inline-block; min-width: 200px; vertical-align: top; }\n" +
-	".label { color: #666; }\n" +
-	"</style>\n" +
-	"</head>\n" +
-	"<body>\n" +
-	"<h2>iBBQ Monitor</h2>\n" +
-	"<div id=\"devices\"></div>\n" +
-	"<script>\n" +
-	"fetch('/api/devices').then(r=>r.json()).then(devices=>{\n" +
-	"    const el = document.getElementById('devices');\n" +
-	"    if (!devices || devices.length === 0) { el.textContent = 'No devices'; return; }\n" +
-	"    el.innerHTML = devices.map(d => {\n" +
-	"        const temps = (d.Temperatures || []).map((t, i) => '<span class=\"label\">T' + (i + 1) + ':</span> ' + Number(t).toFixed(1) + '°C').join('<br>');\n" +
-	"        return '<div class=\"device\">' +\n" +
-	"            '<strong>' + (d.Name || '--') + '</strong><br>' +\n" +
-	"            '<span class=\"label\">Status:</span> ' + (d.Status || '--') + '<br>' +\n" +
-	"            '<span class=\"label\">Battery:</span> ' + (d.BatteryLevel != null ? d.BatteryLevel + '%' : '--') + '<br>' +\n" +
-	"            temps + '<br>' +\n" +
-	"            '<span class=\"label\">Last seen:</span> ' + (d.LastSeen ? new Date(d.LastSeen).toLocaleTimeString() : '--') +\n" +
-	"        '</div>';\n" +
-	"    }).join('');\n" +
-	"});\n" +
-	"</script>\n" +
-	"</body>\n" +
-	"</html>"
+func (s *webServer) handleConfig(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, s.registry.Config())
+	case http.MethodPut:
+		var cfg AppConfig
+		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+		if err := s.registry.SetConfig(cfg); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, s.registry.Config())
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
 
-func handleIndex(w http.ResponseWriter, _ *http.Request) {
+func (s *webServer) handleScan(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	s.dm.TriggerScan()
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "scan requested"})
+}
+
+var indexHTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>iBBQ Monitor</title>
+  <style>
+    body { font-family: monospace; margin: 0; padding: 24px; background: #f5f1e8; color: #1d1d1d; }
+    h1, h2 { margin: 0 0 12px 0; }
+    .panel { background: #fffaf0; border: 1px solid #d3c7b8; border-radius: 10px; padding: 16px; margin-bottom: 20px; box-shadow: 0 3px 10px rgba(0,0,0,0.06); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid #e3d9cc; vertical-align: top; text-align: left; }
+    th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #665b4d; }
+    input[type="text"], input[type="number"] { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #c9bcae; border-radius: 6px; background: #fff; }
+    button { padding: 7px 12px; border: 0; border-radius: 6px; background: #3d6b52; color: white; cursor: pointer; }
+    button.secondary { background: #7e5c3f; }
+    button:disabled { opacity: 0.5; cursor: wait; }
+    .status { font-weight: bold; }
+    .status-connected { color: #2e7d32; }
+    .status-disconnected { color: #b26a00; }
+    .status-dead { color: #b3261e; }
+    .status-connecting { color: #5f6368; }
+    .small { color: #6c6257; font-size: 12px; }
+    .row-actions { display: flex; gap: 8px; align-items: center; }
+    .inline { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+    .field { min-width: 180px; }
+    .temps { white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h1>iBBQ Monitor</h1>
+    <p class="small">Auto-refreshes every 5 seconds. Names and poll intervals are persisted in the registry.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Global Config</h2>
+    <div class="inline">
+      <label class="field">Scan interval (sec)<br><input id="scanIntervalSec" type="number" min="1"></label>
+      <label class="field">Default poll interval (sec)<br><input id="defaultPollIntervalSec" type="number" min="1"></label>
+      <div class="row-actions">
+        <button id="saveConfigBtn" onclick="saveConfig()">Save Config</button>
+        <button class="secondary" id="scanBtn" onclick="triggerScan()">Scan Now</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Devices</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>MAC</th>
+          <th>UID</th>
+          <th>Status</th>
+          <th>Temperatures</th>
+          <th>Battery</th>
+          <th>Last Seen</th>
+          <th>Poll Interval</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="deviceRows">
+        <tr><td colspan="9">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    async function loadConfig() {
+      const res = await fetch('/api/config');
+      const cfg = await res.json();
+      document.getElementById('scanIntervalSec').value = cfg.scanIntervalSec || 300;
+      document.getElementById('defaultPollIntervalSec').value = cfg.defaultPollIntervalSec || 5;
+    }
+
+    function statusClass(status) {
+      const value = (status || '').toLowerCase();
+      if (value === 'connected') return 'status-connected';
+      if (value === 'disconnected') return 'status-disconnected';
+      if (value === 'dead') return 'status-dead';
+      return 'status-connecting';
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+    }
+
+    function renderDevices(devices) {
+      const tbody = document.getElementById('deviceRows');
+      if (!devices.length) {
+        tbody.innerHTML = '<tr><td colspan="9">No devices known yet. Run a scan and wait for discovery.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = devices.map((device, index) => {
+        const temps = (device.temperatures || []).length
+          ? device.temperatures.map((t, i) => 'T' + (i + 1) + ': ' + Number(t).toFixed(1) + '°C').join('<br>')
+          : '--';
+        const battery = device.batteryLevel >= 0 ? device.batteryLevel + '%' : '--';
+        const lastSeen = device.lastSeen ? new Date(device.lastSeen).toLocaleString() : '--';
+        return '<tr>' +
+          '<td><input type="text" id="name-' + index + '" value="' + escapeHtml(device.name) + '"></td>' +
+          '<td>' + escapeHtml(device.mac) + '</td>' +
+          '<td class="small">' + escapeHtml(device.uid) + '</td>' +
+          '<td><span class="status ' + statusClass(device.status) + '">' + escapeHtml(device.status || '--') + '</span></td>' +
+          '<td class="temps">' + temps + '</td>' +
+          '<td>' + escapeHtml(battery) + '</td>' +
+          '<td>' + escapeHtml(lastSeen) + '</td>' +
+          '<td><input type="number" min="1" id="poll-' + index + '" value="' + escapeHtml(device.pollIntervalSec) + '"></td>' +
+          '<td><button onclick="saveDevice(\'' + encodeURIComponent(device.mac) + '\', ' + index + ')">Save</button></td>' +
+          '</tr>';
+      }).join('');
+    }
+
+    async function loadDevices() {
+      const res = await fetch('/api/devices');
+      const devices = await res.json();
+      renderDevices(devices);
+    }
+
+    async function saveDevice(encodedMac, index) {
+      const mac = decodeURIComponent(encodedMac);
+      const name = document.getElementById('name-' + index).value;
+      const intervalSec = Number(document.getElementById('poll-' + index).value);
+
+      const nameRes = await fetch('/api/devices/' + encodeURIComponent(mac) + '/name', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      if (!nameRes.ok) {
+        alert('Failed to save device name');
+        return;
+      }
+
+      const pollRes = await fetch('/api/devices/' + encodeURIComponent(mac) + '/poll', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intervalSec })
+      });
+      if (!pollRes.ok) {
+        alert('Failed to save poll interval');
+        return;
+      }
+
+      await loadDevices();
+    }
+
+    async function saveConfig() {
+      const button = document.getElementById('saveConfigBtn');
+      button.disabled = true;
+      try {
+        const payload = {
+          scanIntervalSec: Number(document.getElementById('scanIntervalSec').value),
+          defaultPollIntervalSec: Number(document.getElementById('defaultPollIntervalSec').value)
+        };
+        const res = await fetch('/api/config', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          alert('Failed to save config');
+          return;
+        }
+        await loadConfig();
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function triggerScan() {
+      const button = document.getElementById('scanBtn');
+      button.disabled = true;
+      try {
+        const res = await fetch('/api/scan', { method: 'POST' });
+        if (!res.ok) {
+          alert('Failed to trigger scan');
+        }
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function refreshAll() {
+      await loadConfig();
+      await loadDevices();
+    }
+
+    refreshAll();
+    setInterval(loadDevices, 5000);
+  </script>
+</body>
+</html>`
+
+func (s *webServer) handleIndex(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	_, _ = fmt.Fprint(w, indexHTML)
 }

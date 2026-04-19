@@ -56,6 +56,7 @@ On `armv6l`, the installer uses Go `1.21.13` because newer official releases do 
 
 The values in `/etc/default/go-ibbq-mqtt` are what the service will use on boot. Editing `.env` in the repo only affects manual runs from the checkout directory.
 The service runs as user `ibbq`, and the install script adds that user to the `bluetooth` group so the BLE adapter is accessible under systemd as well.
+Discovered devices are persisted in `/var/lib/go-ibbq-mqtt/registry.json`; names and poll intervals are managed from the web UI, not from env vars.
 
 If you prefer to install manually instead of using the script:
 
@@ -83,8 +84,9 @@ nano .env
 
 Key settings:
 - `MQTT_SERVER` — address of your MQTT broker (e.g. `tcp://localhost:1883`)
-- `DEVICE_MAC` — Bluetooth MAC of your Inkbird (leave blank to auto-discover)
-- `DEVICE_NAME` — label used in MQTT topics
+- `MQTT_TOPIC` — base MQTT topic prefix (e.g. `ibbq`)
+- `WEB_PORT` — port for the web UI and API
+- `LOGXI` — log verbosity (e.g. `*=INF`)
 
 ### Running
 
@@ -109,7 +111,7 @@ LOGXI=*=INF ./go-ibbq-mqtt
 
 ### Run on boot with systemd
 
-This repo includes both a single-device unit (`go-ibbq-mqtt.service`) and a template unit for multiple thermometers (`go-ibbq-mqtt@.service`).
+This repo includes a single `systemd` unit, `go-ibbq-mqtt.service`. One process scans for and manages all nearby iBBQ devices.
 
 Install the binary, env file, and unit on the Pi:
 
@@ -126,15 +128,3 @@ sudo systemctl restart go-ibbq-mqtt
 ```
 
 The important bit is `systemctl enable`: that creates the boot-time symlink, so the service starts automatically on boot. `--now` also starts it immediately without waiting for a reboot.
-
-For multiple devices, use the template unit and one env file per device:
-
-```bash
-sudo install -m 0755 go-ibbq-mqtt /usr/local/bin/go-ibbq-mqtt
-sudo cp .env.probe1.example /etc/default/go-ibbq-mqtt.probe1
-sudo cp .env.probe2.example /etc/default/go-ibbq-mqtt.probe2
-sudo cp go-ibbq-mqtt@.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now go-ibbq-mqtt@probe1
-sudo systemctl enable --now go-ibbq-mqtt@probe2
-```

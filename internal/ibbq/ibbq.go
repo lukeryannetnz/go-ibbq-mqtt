@@ -32,7 +32,6 @@ import (
 type Ibbq struct {
 	ctx                         context.Context
 	config                      Configuration
-	device                      ble.Device
 	disconnectedHandler         DisconnectedHandler
 	temperatureReceivedHandler  TemperatureReceivedHandler
 	batteryLevelReceivedHandler BatteryLevelReceivedHandler
@@ -77,7 +76,7 @@ func InitBLE() error {
 
 // NewIbbq creates a new Ibbq.
 func NewIbbq(ctx context.Context, config Configuration, disconnectedHandler DisconnectedHandler, temperatureReceivedHandler TemperatureReceivedHandler, batteryLevelReceivedHandler BatteryLevelReceivedHandler, statusUpdatedHandler StatusUpdatedHandler) (ibbq Ibbq, err error) {
-	return Ibbq{ctx, config, nil, disconnectedHandler, temperatureReceivedHandler, batteryLevelReceivedHandler, statusUpdatedHandler, nil, nil, nil, Disconnected}, nil
+	return Ibbq{ctx, config, disconnectedHandler, temperatureReceivedHandler, batteryLevelReceivedHandler, statusUpdatedHandler, nil, nil, nil, Disconnected}, nil
 }
 
 func (ibbq *Ibbq) handleDisconnects() {
@@ -86,7 +85,6 @@ func (ibbq *Ibbq) handleDisconnects() {
 	logger.Info("Disconnected", "addr", ibbq.client.Addr().String())
 	ibbq.client = nil
 	ibbq.profile = nil
-	ibbq.device.Stop()
 	ibbq.updateStatus(Disconnected)
 	go ibbq.disconnectedHandler()
 }
@@ -370,10 +368,10 @@ func (ibbq *Ibbq) Disconnect(force bool) error {
 	var err error
 	if ibbq.client == nil {
 		err = errors.New("Not connected")
-		if ibbq.device != nil && force {
+		if force {
 			ibbq.client = nil
 			ibbq.profile = nil
-			err = ibbq.device.Stop()
+			err = nil
 			ibbq.updateStatus(Disconnected)
 			go ibbq.disconnectedHandler()
 		}
@@ -381,10 +379,10 @@ func (ibbq *Ibbq) Disconnect(force bool) error {
 		logger.Info("Disconnecting")
 		ibbq.updateStatus(Disconnecting)
 		err = ibbq.client.CancelConnection()
-		if ibbq.device != nil && force {
+		if force {
 			ibbq.client = nil
 			ibbq.profile = nil
-			err = ibbq.device.Stop()
+			err = nil
 			ibbq.updateStatus(Disconnected)
 			go ibbq.disconnectedHandler()
 		}

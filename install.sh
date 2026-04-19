@@ -6,7 +6,6 @@ SERVICE_USER="${SERVICE_USER:-ibbq}"
 BIN_PATH="${BIN_PATH:-/usr/local/bin/go-ibbq-mqtt}"
 ENV_PATH="${ENV_PATH:-/etc/default/go-ibbq-mqtt}"
 SERVICE_PATH="${SERVICE_PATH:-/etc/systemd/system/go-ibbq-mqtt.service}"
-TEMPLATE_PATH="${TEMPLATE_PATH:-/etc/systemd/system/go-ibbq-mqtt@.service}"
 GO_CMD="${GO_CMD:-}"
 
 OVERWRITE_ENV=0
@@ -155,7 +154,7 @@ while [[ $# -gt 0 ]]; do
 	esac
 done
 
-if [[ ! -f go-ibbq-mqtt.service ]] || [[ ! -f go-ibbq-mqtt@.service ]] || [[ ! -f .env.example ]]; then
+if [[ ! -f go-ibbq-mqtt.service ]] || [[ ! -f .env.example ]]; then
 	echo "Run this script from the repository root." >&2
 	exit 1
 fi
@@ -220,7 +219,6 @@ fi
 
 echo "Installing systemd units"
 sudo install -m 0644 go-ibbq-mqtt.service "$SERVICE_PATH"
-sudo install -m 0644 go-ibbq-mqtt@.service "$TEMPLATE_PATH"
 
 echo "Reloading systemd"
 sudo systemctl daemon-reload
@@ -239,4 +237,4 @@ else
 fi
 
 echo
-echo "Edit $ENV_PATH to set MQTT_SERVER, MQTT_TOPIC, DEVICE_MAC, DEVICE_NAME, and WEB_PORT if needed."
+echo "Edit $ENV_PATH to set MQTT_SERVER, MQTT_TOPIC, WEB_PORT, and LOGXI if needed."
