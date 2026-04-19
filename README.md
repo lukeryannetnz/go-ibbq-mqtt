@@ -27,7 +27,23 @@ $ GOOS=darwin go build
 ## Usage
 
 ### Configuration via env
-See .env for the configuration values you can set via the environment. The defaults in .env will be used if you don't override these.
+Copy `.env.example` to `.env` and edit the values before running:
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+Key settings:
+- `MQTT_SERVER` — address of your MQTT broker (e.g. `tcp://localhost:1883`)
+- `DEVICE_MAC` — Bluetooth MAC of your Inkbird (leave blank to auto-discover)
+- `DEVICE_NAME` — label used in MQTT topics
+
+### Running
+
+```bash
+LOGXI=*=INF ./go-ibbq-mqtt
+```
 
 ### example terminal output
 ```bash
