@@ -1,20 +1,26 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 )
 
 type webServer struct {
-	registry *Registry
-	dm       *DeviceManager
+	registry     *Registry
+	dm           *DeviceManager
+	shutdownFunc func(string) error
 }
 
 type mqttStatusResponse struct {
-	Connected      bool                `json:"connected"`
+	Connected       bool                `json:"connected"`
 	RecentPublishes []MQTTPublishRecord `json:"recentPublishes"`
 }
 
@@ -45,7 +51,7 @@ func toDeviceResponse(record *DeviceRecord) deviceResponse {
 }
 
 func startWebServer(port string, registry *Registry, dm *DeviceManager) {
-	server := &webServer{registry: registry, dm: dm}
+	server := &webServer{registry: registry, dm: dm, shutdownFunc: requestSystemShutdown}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/devices", server.handleDevices)
 	mux.HandleFunc("/api/devices/", server.handleDevice)
@@ -53,6 +59,7 @@ func startWebServer(port string, registry *Registry, dm *DeviceManager) {
 	mux.HandleFunc("/api/mqtt", server.handleMQTT)
 	mux.HandleFunc("/api/config", server.handleConfig)
 	mux.HandleFunc("/api/scan", server.handleScan)
+	mux.HandleFunc("/api/system/shutdown", server.handleShutdown)
 	mux.HandleFunc("/", server.handleIndex)
 
 	addr := fmt.Sprintf(":%s", port)
@@ -70,6 +77,42 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+func requestSystemShutdown(password string) error {
+	if runtime.GOOS != "linux" {
+		return errors.New("system shutdown is only supported on Linux")
+	}
+
+	if os.Geteuid() == 0 {
+		if output, err := exec.Command("systemctl", "poweroff").CombinedOutput(); err != nil {
+			return fmt.Errorf("systemctl poweroff failed: %s", strings.TrimSpace(string(output)))
+		}
+		return nil
+	}
+
+	if output, err := exec.Command("sudo", "-n", "systemctl", "poweroff").CombinedOutput(); err == nil {
+		return nil
+	} else if strings.TrimSpace(password) == "" {
+		msg := strings.TrimSpace(string(output))
+		if msg == "" {
+			msg = "sudo requires a password; enter it in the web UI"
+		}
+		return errors.New(msg)
+	}
+
+	cmd := exec.Command("sudo", "-S", "-p", "", "systemctl", "poweroff")
+	cmd.Stdin = strings.NewReader(password + "\n")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("shutdown failed: %s", msg)
+	}
+	return nil
 }
 
 func (s *webServer) handleDevices(w http.ResponseWriter, r *http.Request) {
@@ -186,7 +229,7 @@ func (s *webServer) handleMQTT(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, mqttStatusResponse{
-		Connected:      s.registry.MQTTConnected(),
+		Connected:       s.registry.MQTTConnected(),
 		RecentPublishes: s.registry.RecentMQTTPublishes(),
 	})
 }
@@ -198,6 +241,35 @@ func (s *webServer) handleScan(w http.ResponseWriter, r *http.Request) {
 	}
 	s.dm.TriggerScan()
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "scan requested"})
+}
+
+func (s *webServer) handleShutdown(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var body struct {
+		Password string `json:"password"`
+	}
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+	}
+
+	shutdownFunc := s.shutdownFunc
+	if shutdownFunc == nil {
+		shutdownFunc = requestSystemShutdown
+	}
+
+	if err := shutdownFunc(body.Password); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "shutdown requested"})
 }
 
 var indexHTML = `<!DOCTYPE html>
@@ -241,6 +313,10 @@ var indexHTML = `<!DOCTYPE html>
     .publish-list li { margin-bottom: 8px; }
     .publish-topic { font-weight: bold; }
     .publish-payload { color: #5a5148; word-break: break-all; }
+    .danger-zone { border-color: #d49a92; background: #fff4f2; }
+    button.danger { background: #8d2f23; }
+    .message-error { color: #8d2f23; }
+    .message-ok { color: #2e7d32; }
   </style>
 </head>
 <body>
@@ -265,6 +341,18 @@ var indexHTML = `<!DOCTYPE html>
     <h2>MQTT</h2>
     <div id="mqttStatus" class="small">Loading MQTT status...</div>
     <ol id="mqttPublishes" class="publish-list"></ol>
+  </div>
+
+  <div class="panel danger-zone">
+    <h2>System</h2>
+    <p class="small">Shuts down this Debian/Linux machine. If sudo requires a password for the service user, enter it here.</p>
+    <div class="inline">
+      <label class="field">Sudo password (optional)<br><input id="shutdownPassword" type="password" autocomplete="current-password"></label>
+      <div class="row-actions">
+        <button class="danger" id="shutdownBtn" onclick="shutdownSystem()">Shutdown System</button>
+      </div>
+    </div>
+    <div id="shutdownStatus" class="small"></div>
   </div>
 
   <div class="panel">
@@ -540,6 +628,40 @@ var indexHTML = `<!DOCTYPE html>
         if (!res.ok) {
           alert('Failed to trigger scan');
         }
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function shutdownSystem() {
+      if (!window.confirm('Shut down this system now?')) {
+        return;
+      }
+
+      const button = document.getElementById('shutdownBtn');
+      const status = document.getElementById('shutdownStatus');
+      button.disabled = true;
+      status.className = 'small';
+      status.textContent = 'Requesting shutdown...';
+
+      try {
+        const password = document.getElementById('shutdownPassword').value;
+        const res = await fetch('/api/system/shutdown', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          status.className = 'small message-error';
+          status.textContent = data.error || 'Shutdown request failed';
+          return;
+        }
+        status.className = 'small message-ok';
+        status.textContent = 'Shutdown requested. The UI may disconnect shortly.';
+      } catch (err) {
+        status.className = 'small message-error';
+        status.textContent = 'Shutdown request failed';
       } finally {
         button.disabled = false;
       }

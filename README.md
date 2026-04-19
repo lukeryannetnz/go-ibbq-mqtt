@@ -46,8 +46,8 @@ For a fresh Raspberry Pi or Debian machine, install the OS packages, clone the r
 sudo apt update
 sudo apt install -y git bluez curl
 
-git clone http://gitea.bracken.life:3000/jaidan/ibbq-multi.git
-cd ibbq-multi
+git clone <project-git-url>
+cd go-ibbq-mqtt
 
 sudo usermod -aG bluetooth "$USER"
 newgrp bluetooth
