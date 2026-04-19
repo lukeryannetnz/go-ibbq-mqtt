@@ -75,6 +75,9 @@ func statusUpdated(deviceName string, ibbqStatus ibbq.Status) {
 func configureEnv() {
 	err := godotenv.Load()
 	if err != nil {
+		if os.IsNotExist(err) && os.Getenv("MQTT_SERVER") != "" {
+			return
+		}
 		logger.Warn("No .env file found, using environment variables", "err", err)
 	}
 }

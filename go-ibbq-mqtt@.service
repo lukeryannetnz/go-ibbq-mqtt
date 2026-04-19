@@ -7,6 +7,7 @@ Wants=bluetooth.target
 Type=simple
 User=ibbq
 SupplementaryGroups=bluetooth
+WorkingDirectory=/var/lib/go-ibbq-mqtt
 EnvironmentFile=/etc/default/go-ibbq-mqtt.%i
 ExecStart=/usr/local/bin/go-ibbq-mqtt
 Restart=always

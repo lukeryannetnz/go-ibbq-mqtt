@@ -7,6 +7,7 @@ BIN_PATH="${BIN_PATH:-/usr/local/bin/go-ibbq-mqtt}"
 ENV_PATH="${ENV_PATH:-/etc/default/go-ibbq-mqtt}"
 SERVICE_PATH="${SERVICE_PATH:-/etc/systemd/system/go-ibbq-mqtt.service}"
 TEMPLATE_PATH="${TEMPLATE_PATH:-/etc/systemd/system/go-ibbq-mqtt@.service}"
+GO_CMD="${GO_CMD:-}"
 
 OVERWRITE_ENV=0
 ENABLE_SERVICE=1
@@ -30,6 +31,48 @@ EOF
 
 version_ge() {
 	[[ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | tail -n1)" == "$1" ]]
+}
+
+set_go_cmd() {
+	if [[ -x /usr/local/go/bin/go ]]; then
+		GO_CMD="/usr/local/go/bin/go"
+		return
+	fi
+
+	if command -v go >/dev/null 2>&1; then
+		GO_CMD="$(command -v go)"
+		return
+	fi
+
+	GO_CMD=""
+}
+
+set_build_target() {
+	local arch
+	arch="${BUILD_ARCH:-$(uname -m)}"
+
+	case "$arch" in
+	x86_64)
+		BUILD_GOARCH="amd64"
+		BUILD_GOARM=""
+		;;
+	aarch64)
+		BUILD_GOARCH="arm64"
+		BUILD_GOARM=""
+		;;
+	armv6l)
+		BUILD_GOARCH="arm"
+		BUILD_GOARM="6"
+		;;
+	armv7l)
+		BUILD_GOARCH="arm"
+		BUILD_GOARM="7"
+		;;
+	*)
+		echo "Unsupported build architecture: $arch" >&2
+		exit 1
+		;;
+	esac
 }
 
 install_go() {
@@ -81,7 +124,9 @@ install_go() {
 	sudo ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
 
 	export PATH="/usr/local/go/bin:$PATH"
-	echo "Installed $(go version)"
+	hash -r
+	set_go_cmd
+	echo "Installed $("$GO_CMD" version)"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -115,7 +160,8 @@ if [[ ! -f go-ibbq-mqtt.service ]] || [[ ! -f go-ibbq-mqtt@.service ]] || [[ ! -
 	exit 1
 fi
 
-if ! command -v go >/dev/null 2>&1; then
+set_go_cmd
+if [[ -z "$GO_CMD" ]]; then
 	if [[ "$INSTALL_GO" -eq 1 ]]; then
 		install_go
 	else
@@ -126,12 +172,12 @@ if ! command -v go >/dev/null 2>&1; then
 	fi
 fi
 
-GO_VERSION_RAW="$(go version)"
+GO_VERSION_RAW="$("$GO_CMD" version)"
 GO_VERSION="$(awk '{print $3}' <<<"$GO_VERSION_RAW" | sed 's/^go//')"
 if [[ -z "$GO_VERSION" ]] || ! version_ge "$GO_VERSION" "$MIN_GO_VERSION"; then
 	if [[ "$INSTALL_GO" -eq 1 ]]; then
 		install_go
-		GO_VERSION_RAW="$(go version)"
+		GO_VERSION_RAW="$("$GO_CMD" version)"
 		GO_VERSION="$(awk '{print $3}' <<<"$GO_VERSION_RAW" | sed 's/^go//')"
 	fi
 fi
@@ -143,8 +189,13 @@ if [[ -z "$GO_VERSION" ]] || ! version_ge "$GO_VERSION" "$MIN_GO_VERSION"; then
 	exit 1
 fi
 
-echo "Building go-ibbq-mqtt binary"
-GOOS=linux go build
+set_build_target
+echo "Building go-ibbq-mqtt binary for linux/${BUILD_GOARCH}${BUILD_GOARM:+ (GOARM=${BUILD_GOARM})}"
+if [[ -n "$BUILD_GOARM" ]]; then
+	GOOS=linux GOARCH="$BUILD_GOARCH" GOARM="$BUILD_GOARM" "$GO_CMD" build -v
+else
+	GOOS=linux GOARCH="$BUILD_GOARCH" "$GO_CMD" build -v
+fi
 
 if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
 	echo "Creating service user $SERVICE_USER"
@@ -153,6 +204,9 @@ fi
 
 echo "Adding $SERVICE_USER to bluetooth group"
 sudo usermod -aG bluetooth "$SERVICE_USER"
+
+echo "Creating working directory /var/lib/go-ibbq-mqtt"
+sudo install -d -m 0755 -o "$SERVICE_USER" -g "$SERVICE_USER" /var/lib/go-ibbq-mqtt
 
 echo "Installing binary to $BIN_PATH"
 sudo install -m 0755 ./go-ibbq-mqtt "$BIN_PATH"
