@@ -13,6 +13,7 @@ ENABLE_SERVICE=1
 INSTALL_GO=0
 MIN_GO_VERSION="${MIN_GO_VERSION:-1.21}"
 GO_INSTALL_VERSION="${GO_INSTALL_VERSION:-1.22.2}"
+GO_INSTALL_VERSION_ARMV6="${GO_INSTALL_VERSION_ARMV6:-1.21.13}"
 
 usage() {
 	cat <<'EOF'
@@ -32,18 +33,21 @@ version_ge() {
 }
 
 install_go() {
-	local arch goarch tarball url tmp_tarball
+	local arch goarch go_version tarball url tmp_tarball
 
 	arch="$(uname -m)"
 	case "$arch" in
 	x86_64)
 		goarch="amd64"
+		go_version="$GO_INSTALL_VERSION"
 		;;
 	aarch64)
 		goarch="arm64"
+		go_version="$GO_INSTALL_VERSION"
 		;;
 	armv6l|armv7l)
 		goarch="armv6l"
+		go_version="$GO_INSTALL_VERSION_ARMV6"
 		;;
 	*)
 		echo "Unsupported architecture for automatic Go install: $arch" >&2
@@ -61,11 +65,11 @@ install_go() {
 		exit 1
 	fi
 
-	tarball="go${GO_INSTALL_VERSION}.linux-${goarch}.tar.gz"
+	tarball="go${go_version}.linux-${goarch}.tar.gz"
 	url="https://go.dev/dl/${tarball}"
 	tmp_tarball="/tmp/${tarball}"
 
-	echo "Downloading Go ${GO_INSTALL_VERSION} for ${goarch}"
+	echo "Downloading Go ${go_version} for ${goarch}"
 	curl -fsSL "$url" -o "$tmp_tarball"
 
 	echo "Installing Go to /usr/local/go"
