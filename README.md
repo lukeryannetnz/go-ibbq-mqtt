@@ -42,6 +42,18 @@ GOOS=linux go build
 sudo usermod -aG bluetooth "$USER"
 newgrp bluetooth
 
+chmod +x install.sh
+./install.sh
+sudo nano /etc/default/go-ibbq-mqtt
+sudo systemctl restart go-ibbq-mqtt
+sudo systemctl status go-ibbq-mqtt
+```
+
+The values in `/etc/default/go-ibbq-mqtt` are what the service will use on boot. Editing `.env` in the repo only affects manual runs from the checkout directory.
+
+If you prefer to install manually instead of using the script:
+
+```bash
 cp .env.example .env
 nano .env
 
@@ -54,8 +66,6 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now go-ibbq-mqtt
 sudo systemctl status go-ibbq-mqtt
 ```
-
-The values in `/etc/default/go-ibbq-mqtt` are what the service will use on boot. Editing `.env` in the repo only affects manual runs from the checkout directory.
 
 ### Configuration via env
 Copy `.env.example` to `.env` and edit the values before running:
@@ -98,12 +108,7 @@ This repo includes both a single-device unit (`go-ibbq-mqtt.service`) and a temp
 Install the binary, env file, and unit on the Pi:
 
 ```bash
-sudo useradd -r -s /usr/sbin/nologin ibbq
-sudo install -m 0755 go-ibbq-mqtt /usr/local/bin/go-ibbq-mqtt
-sudo cp .env.example /etc/default/go-ibbq-mqtt
-sudo cp go-ibbq-mqtt.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now go-ibbq-mqtt
+./install.sh
 ```
 
 Useful service commands:

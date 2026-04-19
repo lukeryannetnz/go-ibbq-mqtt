@@ -11,7 +11,7 @@ import (
 // MqttClient is the public interface
 type MqttClient interface {
 	Init()
-	Pub(topic string, payload interface{})
+	Pub(deviceName, topic string, payload interface{})
 }
 
 // mqttClient implements the MqttClient interface, encapsulating the paho.mqtt.golang module.
@@ -41,8 +41,8 @@ func (m *mqttClient) Init() {
 	logger.Info("Connected to mqtt broker", "broker", os.Getenv("MQTT_SERVER"))
 }
 
-func (m *mqttClient) Pub(topic string, payload interface{}) {
-	t := getTopic(topic)
+func (m *mqttClient) Pub(deviceName, topic string, payload interface{}) {
+	t := getTopic(deviceName, topic)
 
 	logger.Info("Publishing to mqtt", "topic", t)
 	statustoken := m.client.Publish(t, 0, false, payload)
@@ -53,6 +53,11 @@ func (m *mqttClient) Pub(topic string, payload interface{}) {
 	}
 }
 
-func getTopic(topic string) string {
-	return fmt.Sprintf("%s/%s", os.Getenv("MQTT_TOPIC"), topic)
+func getTopic(deviceName, topic string) string {
+	base := os.Getenv("MQTT_TOPIC")
+	if deviceName == "" || deviceName == "default" {
+		return fmt.Sprintf("%s/%s", base, topic)
+	}
+
+	return fmt.Sprintf("%s/%s/%s", base, deviceName, topic)
 }

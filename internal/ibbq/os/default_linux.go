@@ -13,21 +13,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package main
+package os
 
 import (
-	"context"
-	"os"
-	"os/signal"
+	"github.com/go-ble/ble"
+	"github.com/go-ble/ble/linux"
 )
 
-func registerInterruptHandler(cancel context.CancelFunc, ctx1 context.Context) {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	go func() {
-		<-c
-		cancel()
-		<-ctx1.Done()
-		os.Exit(1)
-	}()
+// DefaultDevice ...
+func DefaultDevice() (d ble.Device, err error) {
+	return linux.NewDevice()
 }
