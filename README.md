@@ -1,62 +1,143 @@
 # Inkbird wireless thermometer MQTT publisher 
 ![Go](https://github.com/lukeryannetnz/go-ibbq-mqtt/workflows/Go/badge.svg)
 
-Inspired by the example apps in [`sworisbreathing/go-ibbq`](https://github.com/sworisbreathing/go-ibbq), this is a simple app that connects to an Inkbird wireless thermometer over Bluetooth using [`sworisbreathing/go-ibbq`](https://github.com/sworisbreathing/go-ibbq). It publishes the data it receives to an MQTT topic using [`paho.mqtt.golang`](github.com/eclipse/paho.mqtt.golang)
+This project connects to an Inkbird wireless thermometer over Bluetooth and publishes readings to MQTT using a vendored `internal/ibbq` package plus [`paho.mqtt.golang`](https://github.com/eclipse/paho.mqtt.golang).
+
+Known BLE name variants seen in scans:
+- `iBBQ`
+- `xBBQ`
+
+Both variants are treated as supported devices by the scanner and connect filter.
+
+Observed hardware note:
+- On this unit, only probe 1 is valid.
+- Temperatures 2, 3, 4, 5, and 6 are not valid on this hardware.
+- Probe 2 has no probe inserted.
+- Probes 3, 4, 5, and 6 are not configured in the hardware.
+- Ignore readings of `0C` and `6553.5C` for those unused slots.
 
 ## Building
 
 ### Linux
 
 ```bash
-$ GOOS=linux go build
+$ go build
+```
+
+For cross-compiling to a Linux `armv6l` target such as a Raspberry Pi Zero:
+
+```bash
+GOOS=linux GOARCH=arm GOARM=6 go build
 ```
 
 ### OS X
 
 ```bash
-$ GOOS=darwin go build
+$ go build
 ```
 
 ## Usage
 
-### Configuration via env
-See .env for the configuration values you can set via the environment. The defaults in .env will be used if you don't override these.
+### New machine setup
 
-### example terminal output
+For a fresh Raspberry Pi or Debian machine, install the OS packages, clone the repo, and then install the service:
+
 ```bash
-$ LOGXI=*=INF ./go-ibbq-mqtt
-19:35:28.768185 INF main
-   	_____ ____        _  ____  ____  ____        _      ____  _____  _____
-	/  __//  _ \      / \/  _ \/  _ \/  _ \      / \__/|/  _ \/__ __\/__ __\
-	| |  _| / \|_____ | || | //| | //| / \|_____ | |\/||| / \|  / \    / \
-	| |_//| \_/|\____\| || |_\\| |_\\| \_\|\____\| |  ||| \_\|  | |    | |
-	\____\\____/      \_/\____/\____/\____\      \_/  \|\____\  \_/    \_/
+sudo apt update
+sudo apt install -y git bluez curl
 
-19:35:28.768196 INF main Connecting to mqtt broker broker: tcp://mqtt.local:1883
-19:35:28.768491 INF main Connected to mqtt
-19:35:28.768657 INF main Connecting to device
-19:35:28.768876 INF ibbq Connecting to device
-19:35:28.769377 INF main Status updated status: Connecting
-19:35:28.770498 INF main Publishing to mqtt topic: ibbq/status
-19:35:32.326019 INF ibbq Connected to device addr: 24:7d:4d:6a:8d:6e
-19:35:32.649607 INF ibbq Subscribed to setting results
-19:35:32.649815 INF ibbq Configuring temperature for Celsius
-19:35:32.664590 INF ibbq Configured temperature for Celsius
-19:35:32.664805 INF ibbq Subscribing to real-time data
-19:35:32.679402 INF ibbq Subscribed to real-time data
-19:35:32.679570 INF ibbq Subscribing to history data
-19:35:32.694545 INF ibbq Subscribed to history data
-19:35:32.694766 INF ibbq Enabling real-time data sending
-19:35:32.709506 INF ibbq Enabled real-time data sending
-19:35:32.709879 INF ibbq Enabling battery data sending
-19:35:32.724509 INF main Connected to device
-19:35:32.724585 INF main Status updated status: Connected
-19:35:32.725073 INF main Publishing to mqtt topic: ibbq/status
-19:35:32.739876 INF main Received battery data batteryPct: 69
-19:35:32.740294 INF main Publishing to mqtt topic: ibbq/batterylevel
-19:35:34.060102 INF main Received temperature data temperatures: [25 24]
-19:35:34.060792 INF main Publishing to mqtt topic: ibbq/temperatures
-19:35:36.284006 INF main Received temperature data temperatures: [25 24]
-19:35:36.284516 INF main Publishing to mqtt topic: ibbq/temperatures
-$
+git clone <project-git-url>
+cd go-ibbq-mqtt
+
+sudo usermod -aG bluetooth "$USER"
+newgrp bluetooth
+
+chmod +x install.sh
+./install.sh --install-go
+sudo nano /etc/default/go-ibbq-mqtt
+sudo systemctl restart go-ibbq-mqtt
+sudo systemctl status go-ibbq-mqtt
 ```
+
+If the machine already has Go `1.21+`, you can skip the Go tarball install and run:
+
+```bash
+./install.sh
+```
+
+On `armv6l`, the installer uses Go `1.21.13` because newer official releases do not provide Linux `armv6l` builds.
+
+The values in `/etc/default/go-ibbq-mqtt` are what the service will use on boot. Editing `.env` in the repo only affects manual runs from the checkout directory.
+The service runs as user `ibbq`, and the install script adds that user to the `bluetooth` group so the BLE adapter is accessible under systemd as well.
+Discovered devices are persisted in `/var/lib/go-ibbq-mqtt/registry.json`; names and poll intervals are managed from the web UI, not from env vars.
+
+If you prefer to install manually instead of using the script:
+
+```bash
+GOOS=linux GOARCH=arm GOARM=6 go build
+sudo useradd -r -s /usr/sbin/nologin ibbq || true
+sudo usermod -aG bluetooth ibbq
+sudo install -d -m 0755 -o ibbq -g ibbq /var/lib/go-ibbq-mqtt
+sudo install -m 0755 go-ibbq-mqtt /usr/local/bin/go-ibbq-mqtt
+sudo cp .env.example /etc/default/go-ibbq-mqtt
+sudo nano /etc/default/go-ibbq-mqtt
+sudo cp go-ibbq-mqtt.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now go-ibbq-mqtt
+sudo systemctl status go-ibbq-mqtt
+```
+
+### Configuration via env
+Copy `.env.example` to `.env` and edit the values before running:
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+Key settings:
+- `MQTT_SERVER` — address of your MQTT broker (e.g. `tcp://localhost:1883`)
+- `MQTT_TOPIC` — base MQTT topic prefix (e.g. `ibbq`)
+- `WEB_PORT` — port for the web UI and API
+- `LOGXI` — log verbosity (e.g. `*=INF`)
+
+### Running
+
+```bash
+LOGXI=*=INF ./go-ibbq-mqtt
+```
+
+### Raspberry Pi Bluetooth permissions
+
+If the binary starts only with `sudo` and fails with an error like `hci0: can't down device: operation not permitted`, add your user to the `bluetooth` group and refresh the shell session:
+
+```bash
+sudo usermod -aG bluetooth "$USER"
+newgrp bluetooth
+```
+
+Then run the binary again without `sudo`:
+
+```bash
+LOGXI=*=INF ./go-ibbq-mqtt
+```
+
+### Run on boot with systemd
+
+This repo includes a single `systemd` unit, `go-ibbq-mqtt.service`. One process scans for and manages all nearby iBBQ devices.
+
+Install the binary, env file, and unit on the Pi:
+
+```bash
+./install.sh --install-go
+```
+
+Useful service commands:
+
+```bash
+sudo systemctl status go-ibbq-mqtt
+sudo journalctl -u go-ibbq-mqtt -f
+sudo systemctl restart go-ibbq-mqtt
+```
+
+The important bit is `systemctl enable`: that creates the boot-time symlink, so the service starts automatically on boot. `--now` also starts it immediately without waiting for a reboot.

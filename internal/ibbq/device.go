@@ -13,21 +13,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package main
+package ibbq
 
 import (
-	"context"
-	"os"
-	"os/signal"
+	"github.com/go-ble/ble"
+	ibbqos "github.com/lukeryannetnz/go-ibbq-mqtt/internal/ibbq/os"
 )
 
-func registerInterruptHandler(cancel context.CancelFunc, ctx1 context.Context) {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	go func() {
-		<-c
-		cancel()
-		<-ctx1.Done()
-		os.Exit(1)
-	}()
+// NewDevice creates a new device
+func NewDevice(impl string) (d ble.Device, err error) {
+	return ibbqos.DefaultDevice()
 }
